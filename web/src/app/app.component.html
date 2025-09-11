@@ -1,0 +1,15 @@
+<div class="app-container">
+  <header class="app-header" *ngIf="isAuthenticated">
+    <div class="header-content">
+      <h1 class="app-title">{{ title }}</h1>
+      <div class="user-info" *ngIf="user">
+        <span class="user-name">{{ user.firstName }} {{ user.lastName }}</span>
+        <button class="logout-btn" (click)="logout()">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <router-outlet></router-outlet>
+  </main>
+</div>
