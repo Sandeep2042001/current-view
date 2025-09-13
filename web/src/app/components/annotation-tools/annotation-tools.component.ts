@@ -358,6 +358,7 @@ export class AnnotationToolsComponent implements OnInit, OnDestroy {
     if (newTitle !== null) {
       try {
         const updatedAnnotation = await this.annotationService.updateAnnotation(
+          this.roomId,
           annotation.id, 
           { 
             title: newTitle,
@@ -381,7 +382,7 @@ export class AnnotationToolsComponent implements OnInit, OnDestroy {
   async deleteAnnotation(annotation: Annotation) {
     if (confirm('Are you sure you want to delete this annotation?')) {
       try {
-        await this.annotationService.deleteAnnotation(annotation.id).toPromise();
+        await this.annotationService.deleteAnnotation(this.roomId, annotation.id).toPromise();
         this.annotations = this.annotations.filter(a => a.id !== annotation.id);
         this.annotationDeleted.emit(annotation.id);
         this.toastr.success('Annotation deleted');

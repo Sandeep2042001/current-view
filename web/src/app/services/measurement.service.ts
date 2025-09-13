@@ -19,12 +19,16 @@ export class MeasurementService {
     return this.http.post<Measurement>(`${this.API_URL}/measurements/${roomId}`, measurement);
   }
 
-  updateMeasurement(measurementId: string, measurement: Partial<Measurement>): Observable<Measurement> {
-    return this.http.put<Measurement>(`${this.API_URL}/measurements/${measurementId}`, measurement);
+  updateMeasurement(roomId: string, measurementId: string, measurement: Partial<Measurement>): Observable<Measurement> {
+    return this.http.put<Measurement>(`${this.API_URL}/measurements/${roomId}/${measurementId}`, measurement);
   }
 
-  deleteMeasurement(measurementId: string): Observable<{ message: string }> {
-    return this.http.delete<{ message: string }>(`${this.API_URL}/measurements/${measurementId}`);
+  deleteMeasurement(roomId: string, measurementId: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.API_URL}/measurements/${roomId}/${measurementId}`);
+  }
+
+  getMeasurementStats(roomId: string): Observable<any> {
+    return this.http.get(`${this.API_URL}/measurements/${roomId}/stats`);
   }
 
   calculateDistance(point1: { x: number; y: number; z: number }, point2: { x: number; y: number; z: number }): number {

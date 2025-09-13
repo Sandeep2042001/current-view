@@ -17,6 +17,8 @@ const projectRoutes = require('./routes/projects');
 const uploadRoutes = require('./routes/upload');
 const processingRoutes = require('./routes/processing');
 const adminRoutes = require('./routes/admin');
+const measurementRoutes = require('./routes/measurements');
+const annotationRoutes = require('./routes/annotations');
 
 // Import middleware
 const errorHandler = require('./middleware/errorHandler');
@@ -65,6 +67,8 @@ app.use('/api/projects', authMiddleware, projectRoutes);
 app.use('/api/upload', authMiddleware, uploadRoutes);
 app.use('/api/processing', authMiddleware, processingRoutes);
 app.use('/api/admin', authMiddleware, adminRoutes);
+app.use('/api/measurements', authMiddleware, measurementRoutes);
+app.use('/api/annotations', authMiddleware, annotationRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

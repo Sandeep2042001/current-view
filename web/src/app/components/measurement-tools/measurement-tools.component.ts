@@ -304,6 +304,7 @@ export class MeasurementToolsComponent implements OnInit, OnDestroy {
     if (newLabel !== null) {
       try {
         const updatedMeasurement = await this.measurementService.updateMeasurement(
+          this.roomId,
           measurement.id, 
           { label: newLabel }
         ).toPromise();
@@ -324,7 +325,7 @@ export class MeasurementToolsComponent implements OnInit, OnDestroy {
   async deleteMeasurement(measurement: Measurement) {
     if (confirm('Are you sure you want to delete this measurement?')) {
       try {
-        await this.measurementService.deleteMeasurement(measurement.id).toPromise();
+        await this.measurementService.deleteMeasurement(this.roomId, measurement.id).toPromise();
         this.measurements = this.measurements.filter(m => m.id !== measurement.id);
         this.measurementDeleted.emit(measurement.id);
         this.toastr.success('Measurement deleted');
