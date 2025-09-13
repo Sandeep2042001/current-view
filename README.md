@@ -9,18 +9,6 @@ A complete cross-platform solution for creating and exploring interactive 360° 
 - **Web App**: Angular with Three.js/Photo Sphere Viewer
 - **Infrastructure**: Docker containerized services
 
-## Project Structure
-
-```
-├── backend/                 # Backend server and services
-├── mobile/                  # React Native mobile app
-├── web/                     # Angular web application
-├── cv-pipeline/            # Computer vision processing
-├── docker/                 # Docker configurations
-├── docs/                   # Documentation
-└── shared/                 # Shared types and utilities
-```
-
 ## Quick Start
 
 1. **Prerequisites**
@@ -52,7 +40,7 @@ A complete cross-platform solution for creating and exploring interactive 360° 
 ## Milestones
 
 - [x] Milestone 1: Foundation & Setup
-- [ ] Milestone 2: Auto-Stitch & 3D Model
+- [x] Milestone 2: Auto-Stitch & 3D Model
         CV pipeline v1 (feature extraction, stitching, auto-linking).
         Export to basic 3D model (mesh reconstruction).
         Quality gates (blur/exposure checks).
