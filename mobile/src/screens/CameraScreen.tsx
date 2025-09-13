@@ -7,9 +7,12 @@ import {
   Alert,
   Dimensions,
   Vibration,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
 import { RNCamera } from 'react-native-camera';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { accelerometer, gyroscope, magnetometer, SensorTypes } from 'react-native-sensors';
 import { Room } from '../types/User';
 
 interface CameraScreenProps {
@@ -30,6 +33,74 @@ export default function CameraScreen({ navigation, route }: CameraScreenProps) {
   const [capturedCount, setCapturedCount] = useState(0);
   const [flashMode, setFlashMode] = useState('off');
   const [cameraType, setCameraType] = useState('back');
+  
+  // Sensor state
+  const [sensorData, setSensorData] = useState({
+    gyroscope: { x: 0, y: 0, z: 0 },
+    accelerometer: { x: 0, y: 0, z: 0 },
+    magnetometer: { x: 0, y: 0, z: 0 },
+    compass: 0,
+  });
+  const [isLevelStable, setIsLevelStable] = useState(false);
+  const [compassHeading, setCompassHeading] = useState(0);
+
+  // Initialize sensors
+  useEffect(() => {
+    const requestSensorPermissions = async () => {
+      if (Platform.OS === 'android') {
+        try {
+          await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+          );
+        } catch (err) {
+          console.warn('Location permission denied');
+        }
+      }
+    };
+
+    requestSensorPermissions();
+
+    // Subscribe to sensors
+    const gyroSubscription = gyroscope.subscribe(({ x, y, z, timestamp }) => {
+      setSensorData(prev => ({
+        ...prev,
+        gyroscope: { x, y, z }
+      }));
+    });
+
+    const accelSubscription = accelerometer.subscribe(({ x, y, z, timestamp }) => {
+      setSensorData(prev => ({
+        ...prev,
+        accelerometer: { x, y, z }
+      }));
+      
+      // Check if device is level (for stability indication)
+      const isStable = Math.abs(x) < 0.5 && Math.abs(y) < 0.5;
+      setIsLevelStable(isStable);
+    });
+
+    const magnetSubscription = magnetometer.subscribe(({ x, y, z, timestamp }) => {
+      setSensorData(prev => ({
+        ...prev,
+        magnetometer: { x, y, z }
+      }));
+      
+      // Calculate compass heading
+      const heading = Math.atan2(y, x) * (180 / Math.PI);
+      const normalizedHeading = heading < 0 ? heading + 360 : heading;
+      setCompassHeading(normalizedHeading);
+      setSensorData(prev => ({
+        ...prev,
+        compass: normalizedHeading
+      }));
+    });
+
+    return () => {
+      gyroSubscription.unsubscribe();
+      accelSubscription.unsubscribe();
+      magnetSubscription.unsubscribe();
+    };
+  }, []);
 
   const capturePhoto = async () => {
     if (!cameraRef.current || isCapturing) return;
@@ -47,15 +118,33 @@ export default function CameraScreen({ navigation, route }: CameraScreenProps) {
 
       const data = await cameraRef.current.takePictureAsync(options);
       
-      // TODO: Save image with metadata (gyro, compass, etc.)
-      console.log('Photo captured:', data.uri);
+      // Include sensor metadata with the image
+      const metadata = {
+        timestamp: Date.now(),
+        gyroscope: sensorData.gyroscope,
+        accelerometer: sensorData.accelerometer,
+        magnetometer: sensorData.magnetometer,
+        compass: sensorData.compass,
+        isLevelStable: isLevelStable,
+        captureIndex: capturedCount + 1,
+        roomId: room.id,
+        deviceOrientation: 'portrait' // Could be enhanced with actual orientation detection
+      };
+      
+      console.log('Photo captured with metadata:', {
+        uri: data.uri,
+        metadata
+      });
+      
+      // TODO: Upload image with metadata to backend
+      // await uploadImageWithMetadata(data.uri, metadata);
       
       setCapturedCount(prev => prev + 1);
       Vibration.vibrate(100);
       
       Alert.alert(
         'Photo Captured',
-        `Image ${capturedCount + 1} captured successfully`,
+        `Image ${capturedCount + 1} captured with sensor data`,
         [
           { text: 'Continue', onPress: () => {} },
           { text: 'Finish', onPress: () => navigation.goBack() },
@@ -122,8 +211,33 @@ export default function CameraScreen({ navigation, route }: CameraScreenProps) {
             <View style={styles.guideCircle}>
               <Text style={styles.guideText}>360°</Text>
             </View>
+            
+            {/* Sensor Feedback */}
+            <View style={styles.sensorFeedback}>
+              <View style={[styles.levelIndicator, isLevelStable && styles.levelStable]}>
+                <Icon name="straighten" size={16} color={isLevelStable ? '#4CAF50' : '#FF9800'} />
+                <Text style={[styles.sensorText, { color: isLevelStable ? '#4CAF50' : '#FF9800' }]}>
+                  {isLevelStable ? 'Level' : 'Not Level'}
+                </Text>
+              </View>
+              
+              <View style={styles.compassIndicator}>
+                <Icon name="explore" size={16} color="#fff" />
+                <Text style={styles.sensorText}>
+                  {Math.round(compassHeading)}°
+                </Text>
+              </View>
+              
+              <View style={styles.stabilityIndicator}>
+                <Icon name="speed" size={16} color="#fff" />
+                <Text style={styles.sensorText}>
+                  Stability: {Math.abs(sensorData.gyroscope.x + sensorData.gyroscope.y + sensorData.gyroscope.z) < 0.1 ? 'Good' : 'Moving'}
+                </Text>
+              </View>
+            </View>
+            
             <Text style={styles.instructionText}>
-              Position camera at eye level and capture from different angles
+              Keep device level and stable for best results
             </Text>
           </View>
 
@@ -217,6 +331,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     opacity: 0.9,
+  },
+  sensorFeedback: {
+    marginVertical: 20,
+    alignItems: 'center',
+  },
+  levelIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+  levelStable: {
+    backgroundColor: 'rgba(76, 175, 80, 0.3)',
+  },
+  compassIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+  stabilityIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  sensorText: {
+    color: '#fff',
+    fontSize: 12,
+    marginLeft: 6,
+    fontWeight: '500',
   },
   bottomControls: {
     flexDirection: 'row',

@@ -19,12 +19,24 @@ export class AnnotationService {
     return this.http.post<Annotation>(`${this.API_URL}/annotations/${roomId}`, annotation);
   }
 
-  updateAnnotation(annotationId: string, annotation: Partial<Annotation>): Observable<Annotation> {
-    return this.http.put<Annotation>(`${this.API_URL}/annotations/${annotationId}`, annotation);
+  updateAnnotation(roomId: string, annotationId: string, annotation: Partial<Annotation>): Observable<Annotation> {
+    return this.http.put<Annotation>(`${this.API_URL}/annotations/${roomId}/${annotationId}`, annotation);
   }
 
-  deleteAnnotation(annotationId: string): Observable<{ message: string }> {
-    return this.http.delete<{ message: string }>(`${this.API_URL}/annotations/${annotationId}`);
+  deleteAnnotation(roomId: string, annotationId: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.API_URL}/annotations/${roomId}/${annotationId}`);
+  }
+
+  getAnnotationStats(roomId: string): Observable<any> {
+    return this.http.get(`${this.API_URL}/annotations/${roomId}/stats`);
+  }
+
+  getAnnotationProperties(roomId: string, annotationId: string): Observable<any> {
+    return this.http.get(`${this.API_URL}/annotations/${roomId}/${annotationId}/properties`);
+  }
+
+  checkIntersections(roomId: string, point: { x: number; y: number; z: number }): Observable<any> {
+    return this.http.post(`${this.API_URL}/annotations/${roomId}/intersect`, { point });
   }
 
   // Helper methods for annotation calculations
