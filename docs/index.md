@@ -1,7 +1,5 @@
 # Interactive 360° Platform Documentation
 
-Welcome to the comprehensive documentation for the Interactive 360° Platform - a complete cross-platform solution for creating and exploring interactive 360° walkthroughs.
-
 ## 📚 **Documentation Overview**
 
 This documentation provides everything you need to understand, deploy, and use the Interactive 360° Platform effectively.
