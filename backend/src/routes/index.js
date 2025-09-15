@@ -1,5 +1,5 @@
 const express = require('express');
-const authMiddleware = require('../middleware/auth');
+const { authMiddleware } = require('../middleware/auth');
 
 // Import all route modules
 const authRoutes = require('./auth');

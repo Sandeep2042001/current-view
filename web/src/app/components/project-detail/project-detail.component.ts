@@ -94,11 +94,11 @@ import { Project, Room } from '../../models/user.model';
             
             <!-- Room Image -->
             <div class="room-image">
-              <div class="image-placeholder" *ngIf="!room.metadata?.preview_image">
+              <div class="image-placeholder" *ngIf="!room.metadata?.['preview_image']">
                 <i class="material-icons">room</i>
               </div>
-              <img *ngIf="room.metadata?.preview_image" 
-                   [src]="room.metadata.preview_image" 
+              <img *ngIf="room.metadata?.['preview_image']" 
+                   [src]="room.metadata?.['preview_image']" 
                    [alt]="room.name">
               
               <!-- Status Badge -->
@@ -175,15 +175,15 @@ import { Project, Room } from '../../models/user.model';
             <div class="model-stats">
               <div class="stat">
                 <span class="label">Vertices:</span>
-                <span class="value">{{ project?.metadata?.model_vertices || 0 }}</span>
+                <span class="value">{{ project?.metadata?.['model_vertices'] || 0 }}</span>
               </div>
               <div class="stat">
                 <span class="label">Faces:</span>
-                <span class="value">{{ project?.metadata?.model_faces || 0 }}</span>
+                <span class="value">{{ project?.metadata?.['model_faces'] || 0 }}</span>
               </div>
               <div class="stat">
                 <span class="label">Quality:</span>
-                <span class="value">{{ (project?.metadata?.reconstruction_quality?.overall || 0) * 100 | number:'1.0-0' }}%</span>
+                <span class="value">{{ (project?.metadata?.['reconstruction_quality']?.overall || 0) * 100 | number:'1.0-0' }}%</span>
               </div>
             </div>
             <button (click)="viewIn3D()" class="view-model-btn">
@@ -199,7 +199,7 @@ import { Project, Room } from '../../models/user.model';
 })
 export class ProjectDetailComponent implements OnInit {
   projectId!: string;
-  project!: Project;
+  project: Project | null = null;
   rooms: Room[] = [];
   processingJobs: any[] = [];
   loading = false;
@@ -222,8 +222,8 @@ export class ProjectDetailComponent implements OnInit {
   async loadProject() {
     try {
       this.loading = true;
-      this.project = await this.projectService.getProject(this.projectId).toPromise();
-      this.rooms = this.project.rooms || [];
+      this.project = await this.projectService.getProject(this.projectId).toPromise() || null;
+      this.rooms = this.project?.rooms || [];
       await this.loadProcessingJobs();
     } catch (error) {
       this.toastr.error('Failed to load project');
@@ -235,7 +235,7 @@ export class ProjectDetailComponent implements OnInit {
 
   async loadProcessingJobs() {
     try {
-      this.processingJobs = await this.processingService.getJobs(this.projectId).toPromise();
+      this.processingJobs = await this.processingService.getJobs(this.projectId).toPromise() || [];
     } catch (error) {
       console.error('Error loading processing jobs:', error);
     }
@@ -247,7 +247,7 @@ export class ProjectDetailComponent implements OnInit {
   }
 
   get has3DModel(): boolean {
-    return this.project?.metadata?.has_3d_model === true;
+    return this.project?.metadata?.['has_3d_model'] === true;
   }
 
   async startProcessing() {
@@ -289,7 +289,9 @@ export class ProjectDetailComponent implements OnInit {
   async createRoom(name: string) {
     try {
       const room = await this.projectService.createRoom(this.projectId, { name }).toPromise();
-      this.rooms.push(room);
+      if (room) {
+        this.rooms.push(room);
+      }
       this.toastr.success('Room created successfully');
     } catch (error) {
       this.toastr.error('Failed to create room');
@@ -323,7 +325,7 @@ export class ProjectDetailComponent implements OnInit {
     }
   }
 
-  formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString();
+  formatDate(dateString: string | undefined): string {
+    return dateString ? new Date(dateString).toLocaleDateString() : 'Unknown';
   }
 }

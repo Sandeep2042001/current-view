@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy, ElementRef, ViewChild, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ProjectService } from '../../services/project.service';
 import { UploadService } from '../../services/upload.service';
@@ -17,7 +18,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
 @Component({
   selector: 'app-viewer',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="viewer-container">
       <!-- Viewer Controls -->
@@ -57,8 +58,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
         <!-- Hotspots -->
         <div *ngFor="let hotspot of hotspots" 
              class="hotspot" 
-             [style.left.px]="hotspot.screenPosition.x" 
-             [style.top.px]="hotspot.screenPosition.y"
+              [style.left.px]="hotspot.screenPosition?.x || 0"
+              [style.top.px]="hotspot.screenPosition?.y || 0"
              [class]="'hotspot-' + hotspot.type"
              (click)="onHotspotClick(hotspot)">
           <div class="hotspot-icon">
@@ -74,8 +75,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
         <div *ngIf="showAnnotations" class="annotations-overlay">
           <div *ngFor="let annotation of annotations" 
                class="annotation"
-               [style.left.px]="annotation.screenPosition.x"
-               [style.top.px]="annotation.screenPosition.y">
+                [style.left.px]="annotation.screenPosition?.x || 0"
+                [style.top.px]="annotation.screenPosition?.y || 0">
             <div class="annotation-marker" [class]="'annotation-' + annotation.type">
               <i class="material-icons">{{ getAnnotationIcon(annotation.type) }}</i>
             </div>
@@ -90,8 +91,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
         <div *ngIf="showMeasurements" class="measurements-overlay">
           <div *ngFor="let measurement of measurements" 
                class="measurement"
-               [style.left.px]="measurement.screenPosition.x"
-               [style.top.px]="measurement.screenPosition.y">
+                [style.left.px]="measurement.screenPosition?.x || 0"
+                [style.top.px]="measurement.screenPosition?.y || 0">
             <div class="measurement-line"></div>
             <div class="measurement-label">
               {{ measurement.distance?.toFixed(2) }} {{ measurement.unit }}
@@ -176,7 +177,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   // Component state
   projectId!: string;
   currentRoomId!: string;
-  project!: Project;
+  project: Project | null = null;
   rooms: Room[] = [];
   currentRoom!: Room;
   hotspots: Hotspot[] = [];
@@ -238,8 +239,8 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loading = true;
       this.loadingMessage = 'Loading project...';
 
-      this.project = await this.projectService.getProject(this.projectId).toPromise();
-      this.rooms = this.project.rooms || [];
+      this.project = await this.projectService.getProject(this.projectId).toPromise() || null;
+      this.rooms = this.project?.rooms || [];
 
       if (this.rooms.length === 0) {
         this.toastr.error('No rooms found in this project');
@@ -290,12 +291,12 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       this.loadingMessage = 'Loading 360° image...';
 
-      if (this.currentRoom.metadata?.stitched_image_path) {
+      if (this.currentRoom.metadata?.['stitched_image_path']) {
         // Get presigned URL for the stitched image
-        const imageUrl = await this.uploadService.getImageUrl(this.currentRoom.metadata.stitched_image_path).toPromise();
+        const imageUrl = await this.uploadService.getImageUrl(this.currentRoom.metadata['stitched_image_path']).toPromise();
         
         // Load texture
-        const texture = await this.loadTexture(imageUrl);
+        const texture = await this.loadTexture(imageUrl?.url || '');
         
         // Create sphere geometry
         const geometry = new THREE.SphereGeometry(500, 60, 40);
@@ -430,7 +431,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   private async loadAnnotations(): Promise<Annotation[]> {
     try {
       const annotations = await this.annotationService.getAnnotations(this.currentRoomId).toPromise();
-      return annotations.map(annotation => ({
+      return (annotations || []).map(annotation => ({
         ...annotation,
         coordinates: typeof annotation.coordinates === 'string' 
           ? JSON.parse(annotation.coordinates) 
@@ -445,7 +446,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   private async loadMeasurements(): Promise<Measurement[]> {
     try {
       const measurements = await this.measurementService.getMeasurements(this.currentRoomId).toPromise();
-      return measurements.map(measurement => ({
+      return (measurements || []).map(measurement => ({
         ...measurement,
         points: typeof measurement.points === 'string' 
           ? JSON.parse(measurement.points) 
@@ -606,7 +607,9 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
           }
         }).toPromise();
         
-        this.annotations.push(annotation);
+        if (annotation) {
+          this.annotations.push(annotation);
+        }
         this.calculateAnnotationScreenPositions();
         this.toastr.success('Annotation added successfully');
         
@@ -662,7 +665,9 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         label: `${this.measurementType} measurement`
       }).toPromise();
       
-      this.measurements.push(measurement);
+      if (measurement) {
+        this.measurements.push(measurement);
+      }
       this.calculateMeasurementScreenPositions();
       this.toastr.success('Measurement created successfully');
       
