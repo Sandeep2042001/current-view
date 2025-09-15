@@ -46,6 +46,14 @@
   i {
     font-size: 20px;
   }
+
+  &.upload-btn {
+    background: rgba(33, 150, 243, 0.8);
+    
+    &:hover {
+      background: rgba(33, 150, 243, 1);
+    }
+  }
 }
 
 .room-navigation {

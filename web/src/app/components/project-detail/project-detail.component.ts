@@ -127,17 +127,17 @@ import { Project, Room } from '../../models/user.model';
             <!-- Room Actions -->
             <div class="room-actions">
               <button (click)="viewRoom(room); $event.stopPropagation()" 
-                      class="action-btn primary">
+                      class="room-btn primary">
                 <i class="material-icons">visibility</i>
                 View
               </button>
               <button (click)="editRoom(room); $event.stopPropagation()" 
-                      class="action-btn secondary">
+                      class="room-btn secondary">
                 <i class="material-icons">edit</i>
                 Edit
               </button>
               <button (click)="deleteRoom(room); $event.stopPropagation()" 
-                      class="action-btn danger">
+                      class="room-btn danger">
                 <i class="material-icons">delete</i>
                 Delete
               </button>

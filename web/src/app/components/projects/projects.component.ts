@@ -53,7 +53,7 @@ import { Project } from '../../models/user.model';
             <div class="project-stats">
               <div class="stat">
                 <i class="material-icons">room</i>
-                <span>{{ project.rooms?.length || 0 }} rooms</span>
+                <span>{{ project.room_count || 0 }} rooms</span>
               </div>
               <div class="stat">
                 <i class="material-icons">schedule</i>
@@ -235,7 +235,12 @@ export class ProjectsComponent implements OnInit {
     }
   }
 
-  formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString();
+  formatDate(dateString: string | undefined): string {
+    if (!dateString) return 'Unknown';
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch (error) {
+      return 'Invalid Date';
+    }
   }
 }

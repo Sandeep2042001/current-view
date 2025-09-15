@@ -16,6 +16,7 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
   rooms?: Room[];
+  room_count?: number;
 }
 
 export interface Room {

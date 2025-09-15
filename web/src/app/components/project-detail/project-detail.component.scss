@@ -357,6 +357,54 @@ img {
   gap: 6px;
 }
 
+.room-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s;
+
+  i {
+    font-size: 16px;
+  }
+
+  &.primary {
+    background: #2196F3;
+    color: white;
+
+    &:hover {
+      background: #1976D2;
+    }
+  }
+
+  &.secondary {
+    background: #f5f5f5;
+    color: #666;
+    border: 1px solid #e0e0e0;
+
+    &:hover {
+      background: #e0e0e0;
+    }
+  }
+
+  &.danger {
+    background: #f5f5f5;
+    color: #f44336;
+    border: 1px solid #e0e0e0;
+
+    &:hover {
+      background: #ffebee;
+    }
+  }
+}
+
 // Empty State
 .empty-rooms {
   text-align: center;

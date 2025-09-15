@@ -36,6 +36,9 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
           <button (click)="toggleMeasurements()" class="control-btn" title="Toggle Measurements">
             <i class="material-icons">{{ showMeasurements ? 'straighten' : 'straighten' }}</i>
           </button>
+          <button (click)="triggerFileUpload()" class="control-btn upload-btn" title="Upload 360° Image">
+            <i class="material-icons">camera_alt</i>
+          </button>
         </div>
 
         <div class="room-navigation" *ngIf="rooms.length > 1">
@@ -44,6 +47,14 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
           </select>
         </div>
       </div>
+
+      <!-- Hidden File Input -->
+      <input #fileInput 
+             type="file" 
+             accept="image/*" 
+             (change)="onFileSelected($event)" 
+             style="display: none;"
+             multiple>
 
       <!-- 360° Viewer Canvas -->
       <div #viewerContainer class="viewer-canvas-container">
@@ -165,6 +176,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('viewerContainer', { static: true }) viewerContainer!: ElementRef;
   @ViewChild('viewerCanvas', { static: true }) viewerCanvas!: ElementRef;
   @ViewChild('minimapCanvas', { static: true }) minimapCanvas!: ElementRef;
+  @ViewChild('fileInput', { static: false }) fileInput!: ElementRef<HTMLInputElement>;
 
   // Three.js objects
   private scene!: THREE.Scene;
@@ -266,6 +278,9 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       this.loadingMessage = 'Loading room data...';
 
+      // Refresh room data from server to get latest images
+      await this.refreshCurrentRoom();
+
       // Load hotspots
       this.hotspots = this.currentRoom.hotspots || [];
       this.calculateHotspotScreenPositions();
@@ -284,6 +299,22 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     } catch (error) {
       this.toastr.error('Failed to load room data');
       console.error('Error loading room data:', error);
+    }
+  }
+
+  private async refreshCurrentRoom() {
+    try {
+      // Get fresh project data with room images
+      const project = await this.projectService.getProject(this.projectId).toPromise();
+      if (project && project.rooms) {
+        const room = project.rooms.find(r => r.id === this.currentRoomId);
+        if (room) {
+          this.currentRoom = room;
+          console.log('Refreshed room data:', this.currentRoom);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing room data:', error);
     }
   }
 
@@ -310,12 +341,48 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         this.scene.add(this.sphere);
 
         this.startRenderLoop();
+      } 
+      // Check for individual uploaded images
+      else if (this.currentRoom.images && this.currentRoom.images.length > 0) {
+        // Use the first uploaded image as a 360° view
+        const firstImage = this.currentRoom.images[0];
+        
+        // Debug logging
+        console.log('First image object:', firstImage);
+        console.log('Storage path:', firstImage.storagePath);
+        console.log('Available properties:', Object.keys(firstImage));
+        
+        if (!firstImage.storagePath) {
+          this.toastr.error('Image storage path is missing. Image object: ' + JSON.stringify(firstImage));
+          return;
+        }
+        
+        // Get presigned URL for the image
+        const imageUrl = await this.uploadService.getImageUrl(firstImage.storagePath).toPromise();
+        
+        // Load texture
+        const texture = await this.loadTexture(imageUrl?.url || '');
+        
+        // Create sphere geometry
+        const geometry = new THREE.SphereGeometry(500, 60, 40);
+        geometry.scale(-1, 1, 1); // Invert the sphere
+
+        // Create material with texture
+        const material = new THREE.MeshBasicMaterial({ map: texture });
+        
+        // Create sphere mesh
+        this.sphere = new THREE.Mesh(geometry, material);
+        this.scene.add(this.sphere);
+
+        this.startRenderLoop();
+        this.toastr.success('360° view loaded successfully!');
       } else {
-        this.toastr.warning('No 360° image available for this room');
+        this.toastr.warning('No images available for this room. Please upload some images first.');
       }
 
     } catch (error) {
-      this.toastr.error('Failed to load 360° image');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.toastr.error('Failed to load 360° image: ' + errorMessage);
       console.error('Error loading 360° image:', error);
     }
   }
@@ -501,6 +568,63 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
 
   toggleMeasurements() {
     this.showMeasurements = !this.showMeasurements;
+  }
+
+  // Upload Methods
+  triggerFileUpload() {
+    this.fileInput.nativeElement.click();
+  }
+
+  onFileSelected(event: any) {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        this.uploadImage(files[i]);
+      }
+    }
+    // Reset the input
+    event.target.value = '';
+  }
+
+  uploadImage(file: File) {
+    if (!this.currentRoomId) {
+      this.toastr.error('No room selected');
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      this.toastr.error('Please select image files only');
+      return;
+    }
+
+    // Validate file size (max 50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      this.toastr.error('File size must be less than 50MB');
+      return;
+    }
+
+    this.loading = true;
+    this.loadingMessage = 'Uploading image...';
+
+    const metadata = {
+      originalName: file.name,
+      size: file.size,
+      type: file.type,
+      uploadedAt: new Date().toISOString()
+    };
+
+    this.uploadService.uploadImage(this.currentRoomId, file, metadata).subscribe({
+      next: (response) => {
+        this.toastr.success('Image uploaded successfully!');
+        this.loadRoomData(); // Refresh the room data
+        this.loading = false;
+      },
+      error: (error) => {
+        this.toastr.error('Upload failed: ' + (error.error?.error || 'Unknown error'));
+        this.loading = false;
+      }
+    });
   }
 
   toggleMinimap() {
