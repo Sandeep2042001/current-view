@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ProjectService } from '../../services/project.service';
 import { UploadService } from '../../services/upload.service';
+import { AnnotationService } from '../../services/annotation.service';
+import { MeasurementService } from '../../services/measurement.service';
 import { ToastrService } from 'ngx-toastr';
 import { Project, Room, Hotspot, Annotation, Measurement } from '../../models/user.model';
 
@@ -190,11 +192,23 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   showMinimap = false;
   showInfoPanel = false;
 
+  // Interaction state
+  isAddingAnnotation = false;
+  isMeasuring = false;
+  measurementPoints: { x: number; y: number; z: number }[] = [];
+  measurementType: 'point_to_point' | 'corner' | 'edge' = 'point_to_point';
+
+  // Mouse/touch interaction
+  private raycaster = new THREE.Raycaster();
+  private mouse = new THREE.Vector2();
+
   constructor(
     private route: ActivatedRoute,
     private router: Router,
     private projectService: ProjectService,
     private uploadService: UploadService,
+    private annotationService: AnnotationService,
+    private measurementService: MeasurementService,
     private toastr: ToastrService
   ) {}
 
@@ -414,13 +428,33 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private async loadAnnotations(): Promise<Annotation[]> {
-    // TODO: Implement API call to load annotations
-    return [];
+    try {
+      const annotations = await this.annotationService.getAnnotations(this.currentRoomId).toPromise();
+      return annotations.map(annotation => ({
+        ...annotation,
+        coordinates: typeof annotation.coordinates === 'string' 
+          ? JSON.parse(annotation.coordinates) 
+          : annotation.coordinates
+      }));
+    } catch (error) {
+      console.error('Error loading annotations:', error);
+      return [];
+    }
   }
 
   private async loadMeasurements(): Promise<Measurement[]> {
-    // TODO: Implement API call to load measurements
-    return [];
+    try {
+      const measurements = await this.measurementService.getMeasurements(this.currentRoomId).toPromise();
+      return measurements.map(measurement => ({
+        ...measurement,
+        points: typeof measurement.points === 'string' 
+          ? JSON.parse(measurement.points) 
+          : measurement.points
+      }));
+    } catch (error) {
+      console.error('Error loading measurements:', error);
+      return [];
+    }
   }
 
   // UI Event Handlers
@@ -477,11 +511,168 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   addAnnotation() {
-    this.toastr.info('Add annotation feature coming soon!');
+    this.isAddingAnnotation = !this.isAddingAnnotation;
+    this.isMeasuring = false;
+    
+    if (this.isAddingAnnotation) {
+      this.toastr.info('Click on the 360° view to place an annotation');
+      this.enableAnnotationMode();
+    } else {
+      this.disableAnnotationMode();
+    }
   }
 
   startMeasurement() {
-    this.toastr.info('Measurement tool coming soon!');
+    this.isMeasuring = !this.isMeasuring;
+    this.isAddingAnnotation = false;
+    this.measurementPoints = [];
+    
+    if (this.isMeasuring) {
+      this.toastr.info('Click on the 360° view to start measuring');
+      this.enableMeasurementMode();
+    } else {
+      this.disableMeasurementMode();
+    }
+  }
+
+  private enableAnnotationMode() {
+    this.renderer.domElement.addEventListener('click', this.onAnnotationClick.bind(this));
+    this.renderer.domElement.style.cursor = 'crosshair';
+  }
+
+  private disableAnnotationMode() {
+    this.renderer.domElement.removeEventListener('click', this.onAnnotationClick.bind(this));
+    this.renderer.domElement.style.cursor = 'grab';
+  }
+
+  private enableMeasurementMode() {
+    this.renderer.domElement.addEventListener('click', this.onMeasurementClick.bind(this));
+    this.renderer.domElement.style.cursor = 'crosshair';
+  }
+
+  private disableMeasurementMode() {
+    this.renderer.domElement.removeEventListener('click', this.onMeasurementClick.bind(this));
+    this.renderer.domElement.style.cursor = 'grab';
+  }
+
+  private onAnnotationClick(event: MouseEvent) {
+    const position = this.getClickPosition(event);
+    if (position) {
+      this.createAnnotation(position);
+    }
+  }
+
+  private onMeasurementClick(event: MouseEvent) {
+    const position = this.getClickPosition(event);
+    if (position) {
+      this.addMeasurementPoint(position);
+    }
+  }
+
+  private getClickPosition(event: MouseEvent): { x: number; y: number; z: number } | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    
+    if (this.sphere) {
+      const intersects = this.raycaster.intersectObject(this.sphere);
+      if (intersects.length > 0) {
+        const point = intersects[0].point;
+        return { x: point.x, y: point.y, z: point.z };
+      }
+    }
+    
+    return null;
+  }
+
+  private async createAnnotation(position: { x: number; y: number; z: number }) {
+    const title = prompt('Enter annotation title:');
+    const description = prompt('Enter annotation description:');
+    
+    if (title) {
+      try {
+        const annotation = await this.annotationService.createAnnotation(this.currentRoomId, {
+          type: 'point',
+          coordinates: [position],
+          title: title,
+          description: description || '',
+          style: {
+            color: '#2196F3',
+            size: 3,
+            opacity: 0.8,
+            showLabels: true
+          }
+        }).toPromise();
+        
+        this.annotations.push(annotation);
+        this.calculateAnnotationScreenPositions();
+        this.toastr.success('Annotation added successfully');
+        
+        this.disableAnnotationMode();
+        this.isAddingAnnotation = false;
+      } catch (error) {
+        this.toastr.error('Failed to create annotation');
+        console.error('Error creating annotation:', error);
+      }
+    }
+  }
+
+  private addMeasurementPoint(position: { x: number; y: number; z: number }) {
+    this.measurementPoints.push(position);
+    
+    // Determine if we have enough points for the measurement type
+    let isComplete = false;
+    
+    switch (this.measurementType) {
+      case 'point_to_point':
+        isComplete = this.measurementPoints.length >= 2;
+        break;
+      case 'corner':
+        isComplete = this.measurementPoints.length >= 3;
+        break;
+      case 'edge':
+        // For edge measurements, allow user to decide when to finish
+        if (this.measurementPoints.length >= 2) {
+          const shouldContinue = confirm('Add another point to the edge measurement? Click Cancel to finish.');
+          isComplete = !shouldContinue;
+        }
+        break;
+    }
+    
+    if (isComplete) {
+      this.finalizeMeasurement();
+    } else {
+      this.toastr.info(`Point ${this.measurementPoints.length} added. Click to add ${this.measurementType === 'corner' ? 'corner' : 'next'} point.`);
+    }
+  }
+
+  private async finalizeMeasurement() {
+    if (this.measurementPoints.length < 2) {
+      this.toastr.error('At least 2 points are required for a measurement');
+      return;
+    }
+    
+    try {
+      const measurement = await this.measurementService.createMeasurement(this.currentRoomId, {
+        type: this.measurementType,
+        points: this.measurementPoints,
+        unit: 'meters',
+        label: `${this.measurementType} measurement`
+      }).toPromise();
+      
+      this.measurements.push(measurement);
+      this.calculateMeasurementScreenPositions();
+      this.toastr.success('Measurement created successfully');
+      
+      this.disableMeasurementMode();
+      this.isMeasuring = false;
+      this.measurementPoints = [];
+    } catch (error) {
+      this.toastr.error('Failed to create measurement');
+      console.error('Error creating measurement:', error);
+    }
   }
 
   takeScreenshot() {
