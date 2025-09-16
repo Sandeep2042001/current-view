@@ -11,12 +11,8 @@ const { connectDatabase } = require('./config/database');
 const { connectRedis } = require('./config/redis');
 const { connectMinIO } = require('./config/minio');
 
-// Import routes
-const authRoutes = require('./routes/auth');
-const projectRoutes = require('./routes/projects');
-const uploadRoutes = require('./routes/upload');
-const processingRoutes = require('./routes/processing');
-const adminRoutes = require('./routes/admin');
+// Import routes through index for cleaner organization
+const apiRoutes = require('./routes');
 
 // Import middleware
 const errorHandler = require('./middleware/errorHandler');
@@ -59,12 +55,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/projects', authMiddleware, projectRoutes);
-app.use('/api/upload', authMiddleware, uploadRoutes);
-app.use('/api/processing', authMiddleware, processingRoutes);
-app.use('/api/admin', authMiddleware, adminRoutes);
+// API routes - now managed through centralized route index
+app.use('/api', apiRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
