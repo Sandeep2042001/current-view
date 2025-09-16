@@ -6,6 +6,7 @@ import { ProjectService } from '../../services/project.service';
 import { UploadService } from '../../services/upload.service';
 import { AnnotationService } from '../../services/annotation.service';
 import { MeasurementService } from '../../services/measurement.service';
+import { ProcessingService } from '../../services/processing.service';
 import { ToastrService } from 'ngx-toastr';
 import { Project, Room, Hotspot, Annotation, Measurement } from '../../models/user.model';
 
@@ -112,14 +113,32 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
         </div>
       </div>
 
-      <!-- Minimap -->
-      <div class="minimap" *ngIf="showMinimap">
-        <div class="minimap-header">
+      <!-- Floor Plan - Coming Soon -->
+      <div class="floor-plan-modal" *ngIf="showMinimap">
+        <div class="modal-header">
           <h4>Floor Plan</h4>
-          <button (click)="toggleMinimap()" class="minimap-close">×</button>
+          <button (click)="toggleMinimap()" class="modal-close">×</button>
         </div>
-        <div class="minimap-content">
-          <canvas #minimapCanvas class="minimap-canvas"></canvas>
+        <div class="modal-content">
+          <div class="coming-soon">
+            <i class="material-icons">construction</i>
+            <h3>Floor Plan Coming Soon</h3>
+            <p>Floor plan generation is currently under development. This feature will automatically create a 2D floor plan from your 360° images.</p>
+            <div class="features-list">
+              <div class="feature-item">
+                <i class="material-icons">check</i>
+                <span>Automatic room layout detection</span>
+              </div>
+              <div class="feature-item">
+                <i class="material-icons">check</i>
+                <span>Interactive navigation overlay</span>
+              </div>
+              <div class="feature-item">
+                <i class="material-icons">check</i>
+                <span>Room connections mapping</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -130,21 +149,57 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
           <button (click)="toggleInfoPanel()" class="info-close">×</button>
         </div>
         <div class="info-content">
-          <p>{{ currentRoom?.description }}</p>
+          <p>{{ currentRoom?.description || 'No description provided' }}</p>
+          
           <div class="room-stats">
             <div class="stat">
               <span class="stat-label">Images:</span>
               <span class="stat-value">{{ currentRoom?.images?.length || 0 }}</span>
             </div>
             <div class="stat">
-              <span class="stat-label">Hotspots:</span>
-              <span class="stat-value">{{ hotspots.length }}</span>
+              <span class="stat-label">Annotations:</span>
+              <span class="stat-value">{{ annotations.length }}</span>
+              <span class="stat-help" title="Manual annotations you've added">ⓘ</span>
             </div>
             <div class="stat">
-              <span class="stat-label">Status:</span>
-              <span class="stat-value" [class]="'status-' + currentRoom?.status">
-                {{ currentRoom?.status }}
-              </span>
+              <span class="stat-label">Hotspots:</span>
+              <span class="stat-value">{{ hotspots.length }}</span>
+              <span class="stat-help" title="Auto-generated navigation points">ⓘ</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Measurements:</span>
+              <span class="stat-value">{{ measurements.length }}</span>
+            </div>
+          </div>
+
+          <div class="room-status">
+            <h4>Processing Status</h4>
+            <div class="status-indicator" [class]="'status-' + currentRoom?.status">
+              <i class="material-icons">{{ getStatusIcon(currentRoom?.status || 'pending') }}</i>
+              <div class="status-details">
+                <span class="status-label">{{ getStatusLabel(currentRoom?.status || 'pending') }}</span>
+                <span class="status-description">{{ getStatusDescription(currentRoom?.status || 'pending') }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-actions" *ngIf="currentRoom?.status === 'pending'">
+            <button (click)="startRoomProcessing()" class="action-btn primary">
+              <i class="material-icons">play_arrow</i>
+              Start Processing
+            </button>
+          </div>
+
+          <div class="info-help">
+            <h4>Need Help?</h4>
+            <div class="help-item">
+              <strong>Annotations:</strong> Click "Add Annotation" to manually mark points of interest
+            </div>
+            <div class="help-item">
+              <strong>Hotspots:</strong> Auto-generated after processing to connect rooms
+            </div>
+            <div class="help-item">
+              <strong>Processing:</strong> Converts your images into a navigable 360° experience
             </div>
           </div>
         </div>
@@ -222,6 +277,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     private uploadService: UploadService,
     private annotationService: AnnotationService,
     private measurementService: MeasurementService,
+    private processingService: ProcessingService,
     private toastr: ToastrService
   ) {}
 
@@ -879,5 +935,143 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       case 'line': return 'timeline';
       default: return 'place';
     }
+  }
+
+  getStatusIcon(status: string | undefined): string {
+    switch (status) {
+      case 'pending': return 'hourglass_empty';
+      case 'processing': return 'hourglass_top';
+      case 'completed': return 'check_circle';
+      case 'failed': return 'error';
+      default: return 'help';
+    }
+  }
+
+  getStatusLabel(status: string | undefined): string {
+    switch (status) {
+      case 'pending': return 'Pending Processing';
+      case 'processing': return 'Processing Images';
+      case 'completed': return 'Ready to View';
+      case 'failed': return 'Processing Failed';
+      default: return 'Unknown Status';
+    }
+  }
+
+  getStatusDescription(status: string | undefined): string {
+    const imageCount = this.currentRoom?.images?.length || 0;
+    
+    switch (status) {
+      case 'pending': 
+        if (imageCount < 1) {
+          return 'Upload images to get started with your 360° room.';
+        } else if (imageCount === 1) {
+          return 'You have 1 image. You can process it as a single 360° view or upload more for stitching.';
+        } else {
+          return `You have ${imageCount} images ready for stitching. Click "Start Processing" to begin.`;
+        }
+      case 'processing': return 'Images are being stitched and hotspots generated. Please wait...';
+      case 'completed': return 'Room processing completed successfully. Navigation and hotspots are available.';
+      case 'failed': return 'Processing encountered an error. Try uploading images again.';
+      default: return 'Status information not available.';
+    }
+  }
+
+  async startRoomProcessing() {
+    if (!this.currentRoom) return;
+    
+    const imageCount = this.currentRoom.images?.length || 0;
+    
+    // Validate image requirements
+    if (imageCount < 1) {
+      this.toastr.error('Please upload at least one image before processing');
+      return;
+    }
+    
+    if (imageCount < 2) {
+      // For single image, we can still process it as a 360° view
+      const confirmSingle = confirm(
+        `You have ${imageCount} image. For best results, upload more images for stitching.\n\n` +
+        'Would you like to:\n' +
+        '• Continue with single image (basic 360° view)\n' +
+        '• Cancel and upload more images'
+      );
+      
+      if (!confirmSingle) {
+        return;
+      }
+      
+      // Process single image as completed
+      try {
+        this.loading = true;
+        this.loadingMessage = 'Processing single image...';
+        
+        // For single images, just mark as completed directly
+        this.currentRoom.status = 'completed';
+        this.toastr.success('Single image processed successfully! 360° view is ready.');
+        
+        // Refresh room data
+        await this.refreshCurrentRoom();
+        await this.loadRoomData();
+        
+      } catch (error) {
+        this.toastr.error('Failed to process single image');
+        console.error('Single image processing error:', error);
+      } finally {
+        this.loading = false;
+      }
+      return;
+    }
+    
+    // Process multiple images with stitching
+    try {
+      this.loading = true;
+      this.loadingMessage = `Starting stitching process for ${imageCount} images...`;
+      
+      // Start stitching process
+      const result = await this.processingService.startStitching(this.currentRoom.id).toPromise();
+      
+      if (result) {
+        this.toastr.success(`Room processing started! Stitching ${imageCount} images...`);
+        // Update room status
+        this.currentRoom.status = 'processing';
+        
+        // Start polling for completion
+        this.pollProcessingStatus(result.jobId);
+      }
+    } catch (error: any) {
+      const errorMessage = error?.error?.error || 'Failed to start room processing';
+      this.toastr.error(errorMessage);
+      console.error('Processing error:', error);
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  private pollProcessingStatus(jobId: string) {
+    const pollInterval = setInterval(async () => {
+      try {
+        const status = await this.processingService.getJobStatus(jobId).toPromise();
+        
+        if (status.status === 'completed') {
+          clearInterval(pollInterval);
+          this.toastr.success('Room processing completed!');
+          this.currentRoom.status = 'completed';
+          await this.refreshCurrentRoom();
+          await this.loadRoomData();
+        } else if (status.status === 'failed') {
+          clearInterval(pollInterval);
+          this.toastr.error('Room processing failed: ' + status.error_message);
+          this.currentRoom.status = 'failed';
+        }
+      } catch (error) {
+        console.error('Error polling job status:', error);
+        clearInterval(pollInterval);
+      }
+    }, 5000); // Poll every 5 seconds
+    
+    // Stop polling after 10 minutes
+    setTimeout(() => {
+      clearInterval(pollInterval);
+    }, 600000);
   }
 }

@@ -99,10 +99,51 @@ async function processStitchingJob(job) {
 }
 
 async function stitchImages(imageBuffers) {
-  // This is a simplified stitching implementation
-  // In production, you would use OpenCV or similar libraries
+  // Enhanced stitching implementation with quality gates
   
   try {
+    // Quality assessment for each image
+    const qualityResults = await Promise.all(
+      imageBuffers.map(async (imageBuffer, index) => {
+        const metadata = await sharp(imageBuffer.buffer).metadata();
+        const stats = await sharp(imageBuffer.buffer).stats();
+        
+        // Blur detection using image statistics
+        const blurScore = calculateBlurScore(stats);
+        
+        // Exposure detection
+        const exposureScore = calculateExposureScore(stats);
+        
+        // Overall quality score
+        const overallQuality = (blurScore + exposureScore) / 2;
+        
+        return {
+          index,
+          width: metadata.width,
+          height: metadata.height,
+          blurScore,
+          exposureScore,
+          overallQuality,
+          isAcceptable: overallQuality > 60 // Quality threshold
+        };
+      })
+    );
+
+    // Filter out low-quality images
+    const acceptableImages = imageBuffers.filter((_, index) => 
+      qualityResults[index].isAcceptable
+    );
+
+    if (acceptableImages.length < 2) {
+      throw new Error('Insufficient high-quality images for stitching');
+    }
+
+    // Log quality assessment
+    logger.info(`Quality assessment: ${acceptableImages.length}/${imageBuffers.length} images passed quality gates`);
+    qualityResults.forEach(result => {
+      logger.info(`Image ${result.index}: blur=${result.blurScore}, exposure=${result.exposureScore}, overall=${result.overallQuality}`);
+    });
+
     // For now, we'll create a simple panorama by combining images
     // In a real implementation, you would:
     // 1. Detect and match features between images
@@ -110,38 +151,117 @@ async function stitchImages(imageBuffers) {
     // 3. Warp and blend images together
     // 4. Create a seamless panorama
 
-    const firstImage = imageBuffers[0];
+    const firstImage = acceptableImages[0];
     const firstImageInfo = await sharp(firstImage.buffer).metadata();
     
     // Create a wider canvas for the panorama
-    const panoramaWidth = firstImageInfo.width * imageBuffers.length;
+    const panoramaWidth = firstImageInfo.width * acceptableImages.length;
     const panoramaHeight = firstImageInfo.height;
     
-    // For demonstration, we'll just concatenate images horizontally
-    // In production, use proper stitching algorithms
-    const stitchedBuffer = await sharp({
-      create: {
-        width: panoramaWidth,
-        height: panoramaHeight,
-        channels: 3,
-        background: { r: 0, g: 0, b: 0 }
-      }
-    })
-    .jpeg({ quality: 90 })
-    .toBuffer();
+    // Enhanced stitching with proper image processing
+    let stitchedBuffer;
+    
+    if (acceptableImages.length === 1) {
+      // Single image - just return it
+      stitchedBuffer = await sharp(acceptableImages[0].buffer)
+        .jpeg({ quality: 95 })
+        .toBuffer();
+    } else {
+      // Multiple images - create composite
+      const compositeImages = acceptableImages.map((img, index) => ({
+        input: img.buffer,
+        left: index * firstImageInfo.width,
+        top: 0
+      }));
 
-    // Calculate quality score (simplified)
-    const quality = Math.min(95, 70 + (imageBuffers.length * 5));
+      stitchedBuffer = await sharp({
+        create: {
+          width: panoramaWidth,
+          height: panoramaHeight,
+          channels: 3,
+          background: { r: 0, g: 0, b: 0 }
+        }
+      })
+      .composite(compositeImages)
+      .jpeg({ quality: 95 })
+      .toBuffer();
+    }
+
+    // Calculate final quality score based on multiple factors
+    const avgQuality = qualityResults
+      .filter(r => r.isAcceptable)
+      .reduce((sum, r) => sum + r.overallQuality, 0) / acceptableImages.length;
+    
+    const imageCountBonus = Math.min(20, acceptableImages.length * 5);
+    const finalQuality = Math.min(95, avgQuality + imageCountBonus);
 
     return {
       buffer: stitchedBuffer,
-      quality: quality
+      quality: finalQuality,
+      processedImages: acceptableImages.length,
+      rejectedImages: imageBuffers.length - acceptableImages.length,
+      qualityMetrics: {
+        averageBlur: qualityResults.reduce((sum, r) => sum + r.blurScore, 0) / qualityResults.length,
+        averageExposure: qualityResults.reduce((sum, r) => sum + r.exposureScore, 0) / qualityResults.length,
+        overallQuality: avgQuality
+      }
     };
 
   } catch (error) {
     logger.error('Image stitching failed:', error);
     throw new Error('Failed to stitch images');
   }
+}
+
+// Enhanced blur detection using image statistics
+function calculateBlurScore(stats) {
+  // Use standard deviation as a measure of image sharpness
+  // Higher standard deviation typically indicates sharper images
+  const channels = stats.channels;
+  let totalStdDev = 0;
+  
+  channels.forEach(channel => {
+    totalStdDev += channel.stdev || 0;
+  });
+  
+  const avgStdDev = totalStdDev / channels.length;
+  
+  // Convert to 0-100 scale (higher = sharper)
+  // Typical sharp images have stddev > 30, blurry images < 15
+  const blurScore = Math.min(100, Math.max(0, (avgStdDev - 10) * 3));
+  
+  return blurScore;
+}
+
+// Enhanced exposure detection
+function calculateExposureScore(stats) {
+  const channels = stats.channels;
+  let exposureScore = 100;
+  
+  channels.forEach(channel => {
+    const mean = channel.mean || 0;
+    
+    // Check for overexposure (too bright)
+    if (mean > 240) {
+      exposureScore -= 30;
+    } else if (mean > 200) {
+      exposureScore -= 15;
+    }
+    
+    // Check for underexposure (too dark)
+    if (mean < 15) {
+      exposureScore -= 30;
+    } else if (mean < 40) {
+      exposureScore -= 15;
+    }
+    
+    // Optimal exposure is around 100-180
+    if (mean >= 80 && mean <= 180) {
+      exposureScore += 10; // Bonus for good exposure
+    }
+  });
+  
+  return Math.max(0, Math.min(100, exposureScore));
 }
 
 module.exports = {

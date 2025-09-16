@@ -582,3 +582,265 @@
     }
   }
 }
+
+// Floor Plan Modal Styles
+.floor-plan-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+
+    h4 {
+      margin: 0;
+      color: #333;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #666;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      &:hover {
+        background: #e9ecef;
+        color: #333;
+      }
+    }
+  }
+
+  .modal-content {
+    padding: 30px;
+
+    .coming-soon {
+      text-align: center;
+
+      i {
+        font-size: 64px;
+        color: #007bff;
+        margin-bottom: 20px;
+      }
+
+      h3 {
+        margin: 0 0 15px 0;
+        color: #333;
+        font-size: 24px;
+        font-weight: 600;
+      }
+
+      p {
+        margin: 0 0 25px 0;
+        color: #666;
+        line-height: 1.6;
+      }
+
+      .features-list {
+        text-align: left;
+        
+        .feature-item {
+          display: flex;
+          align-items: center;
+          margin-bottom: 12px;
+          padding: 8px 0;
+
+          i {
+            font-size: 20px;
+            color: #28a745;
+            margin-right: 12px;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          span {
+            color: #333;
+            font-size: 14px;
+          }
+        }
+      }
+    }
+  }
+}
+
+// Enhanced Info Panel Styles
+.info-panel {
+  .room-stats {
+    .stat {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+
+      .stat-help {
+        margin-left: 8px;
+        color: #007bff;
+        cursor: help;
+        font-size: 14px;
+        opacity: 0.7;
+
+        &:hover {
+          opacity: 1;
+        }
+      }
+    }
+  }
+
+  .room-status {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+
+    h4 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      i {
+        font-size: 24px;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+      }
+
+      .status-details {
+        flex: 1;
+
+        .status-label {
+          display: block;
+          font-weight: 600;
+          font-size: 14px;
+          margin-bottom: 4px;
+        }
+
+        .status-description {
+          display: block;
+          font-size: 12px;
+          color: #666;
+          line-height: 1.4;
+        }
+      }
+
+      &.status-pending {
+        i {
+          color: #ffc107;
+          background: rgba(255, 193, 7, 0.1);
+        }
+      }
+
+      &.status-processing {
+        i {
+          color: #007bff;
+          background: rgba(0, 123, 255, 0.1);
+        }
+      }
+
+      &.status-completed {
+        i {
+          color: #28a745;
+          background: rgba(40, 167, 69, 0.1);
+        }
+      }
+
+      &.status-failed {
+        i {
+          color: #dc3545;
+          background: rgba(220, 53, 69, 0.1);
+        }
+      }
+    }
+  }
+
+  .info-actions {
+    margin: 15px 0;
+
+    .action-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+      width: 100%;
+      justify-content: center;
+
+      &:hover {
+        background: #0056b3;
+        transform: translateY(-1px);
+      }
+
+      i {
+        font-size: 16px;
+      }
+    }
+  }
+
+  .info-help {
+    margin-top: 20px;
+    padding: 15px;
+    background: #e3f2fd;
+    border-radius: 8px;
+    border-left: 4px solid #2196f3;
+
+    h4 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1976d2;
+    }
+
+    .help-item {
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+
+      strong {
+        color: #1976d2;
+      }
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+}

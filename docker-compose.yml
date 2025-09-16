@@ -70,25 +70,29 @@ services:
     networks:
       - app-network
 
-  # CV Processing Worker (commented out for now due to build issues)
-  # cv-worker:
-  #   build:
-  #     context: ./cv-pipeline
-  #     dockerfile: Dockerfile
-  #   environment:
-  #     - REDIS_URL=redis://redis:6379
-  #     - MINIO_ENDPOINT=minio
-  #     - MINIO_PORT=9000
-  #     - MINIO_ACCESS_KEY=minioadmin
-  #     - MINIO_SECRET_KEY=minioadmin
-  #   depends_on:
-  #     - redis
-  #     - minio
-  #   volumes:
-  #     - ./cv-pipeline:/app
-  #     - /app/node_modules
-  #   networks:
-  #     - app-network
+  # CV Processing Worker
+  cv-worker:
+    build:
+      context: ./cv-pipeline
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=interactive360
+      - NODE_ENV=development
+    depends_on:
+      - redis
+      - minio
+      - postgres
+    volumes:
+      - ./cv-pipeline:/app
+      - /app/node_modules
+    networks:
+      - app-network
+    restart: unless-stopped
 
   # Nginx Reverse Proxy
   nginx:
