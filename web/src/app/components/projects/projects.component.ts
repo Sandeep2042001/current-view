@@ -57,7 +57,7 @@ import { Project } from '../../models/user.model';
               </div>
               <div class="stat">
                 <i class="material-icons">schedule</i>
-                <span>{{ formatDate(project.createdAt) }}</span>
+                <span>{{ formatDate(project.created_at) }}</span>
               </div>
             </div>
           </div>

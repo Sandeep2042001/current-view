@@ -109,7 +109,7 @@ router.post('/image/:roomId', upload.single('image'), async (req, res) => {
   }
 });
 
-// Get image
+// Get image URL
 router.get('/image/:imageId', async (req, res) => {
   try {
     const { imageId } = req.params;
@@ -124,23 +124,21 @@ router.get('/image/:imageId', async (req, res) => {
       return res.status(404).json({ error: 'Image not found' });
     }
 
-    // Generate presigned URL for MinIO
-    const minioClient = getMinioClient();
-    const presignedUrl = await minioClient.presignedGetObject(
-      process.env.MINIO_BUCKET || 'interactive360',
-      image.storage_path,
-      3600 // 1 hour expiry
-    );
+    // Return API URL instead of presigned URL to avoid CORS issues
+    const apiUrl = `http://localhost:3000/api/upload/image-data/${imageId}`;
+    console.log('Returning image URL:', apiUrl);
+    console.log('Image ID:', imageId);
 
     res.json({
       ...image,
-      url: presignedUrl
+      url: apiUrl
     });
   } catch (error) {
     logger.error('Error fetching image:', error);
     res.status(500).json({ error: 'Failed to fetch image' });
   }
 });
+
 
 // Delete image
 router.delete('/image/:imageId', async (req, res) => {
@@ -214,4 +212,44 @@ router.get('/progress/:roomId', async (req, res) => {
   }
 });
 
-module.exports = router;
+// Export the image data route separately for public access
+const imageDataRoute = express.Router();
+imageDataRoute.get('/:imageId', async (req, res) => {
+  try {
+    const { imageId } = req.params;
+
+    // Get image from database (no user authentication required for serving images)
+    const image = await db('images')
+      .where({ 'id': imageId })
+      .first();
+
+    if (!image) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    // Get image data from MinIO
+    const minioClient = getMinioClient();
+    const imageStream = await minioClient.getObject(
+      process.env.MINIO_BUCKET || 'interactive360',
+      image.storage_path
+    );
+
+    // Set appropriate headers
+    res.set({
+      'Content-Type': image.mime_type,
+      'Content-Length': image.file_size,
+      'Cache-Control': 'public, max-age=3600'
+    });
+
+    // Stream the image data
+    imageStream.pipe(res);
+  } catch (error) {
+    logger.error('Error serving image data:', error);
+    res.status(500).json({ error: 'Failed to serve image data' });
+  }
+});
+
+module.exports = {
+  router,
+  imageDataRoute
+};

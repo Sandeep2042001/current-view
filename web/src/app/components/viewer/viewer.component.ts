@@ -349,16 +349,16 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         
         // Debug logging
         console.log('First image object:', firstImage);
-        console.log('Storage path:', firstImage.storagePath);
+        console.log('Storage path:', firstImage.storage_path);
         console.log('Available properties:', Object.keys(firstImage));
         
-        if (!firstImage.storagePath) {
+        if (!firstImage.storage_path) {
           this.toastr.error('Image storage path is missing. Image object: ' + JSON.stringify(firstImage));
           return;
         }
         
-        // Get presigned URL for the image
-        const imageUrl = await this.uploadService.getImageUrl(firstImage.storagePath).toPromise();
+        // Get image URL using the image ID
+        const imageUrl = await this.uploadService.getImageUrl(firstImage.id).toPromise();
         
         // Load texture
         const texture = await this.loadTexture(imageUrl?.url || '');
@@ -506,7 +506,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       }));
     } catch (error) {
       console.error('Error loading annotations:', error);
-      return [];
+    return [];
     }
   }
 
@@ -521,14 +521,14 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       }));
     } catch (error) {
       console.error('Error loading measurements:', error);
-      return [];
+    return [];
     }
   }
 
   // UI Event Handlers
   onHotspotClick(hotspot: Hotspot) {
-    if (hotspot.type === 'navigation' && hotspot.targetRoomId) {
-      this.switchToRoom(hotspot.targetRoomId);
+    if (hotspot.type === 'navigation' && hotspot.target_room_id) {
+      this.switchToRoom(hotspot.target_room_id);
     } else {
       this.toastr.info(hotspot.title || 'Hotspot clicked');
     }

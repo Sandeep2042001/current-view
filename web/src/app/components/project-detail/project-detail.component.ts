@@ -23,7 +23,7 @@ import { Project, Room } from '../../models/user.model';
                 {{ project?.status | titlecase }}
               </span>
               <span class="created-date">
-                Created {{ formatDate(project?.createdAt) }}
+                Created {{ formatDate(project?.created_at) }}
               </span>
             </div>
           </div>
