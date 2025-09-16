@@ -106,7 +106,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
                 [style.top.px]="measurement.screenPosition?.y || 0">
             <div class="measurement-line"></div>
             <div class="measurement-label">
-              {{ measurement.distance?.toFixed(2) }} {{ measurement.unit }}
+              {{ formatDistance(measurement.distance) }} {{ measurement.unit }}
             </div>
           </div>
         </div>
@@ -235,6 +235,8 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngAfterViewInit() {
     this.initThreeJS();
+    // Start render loop immediately
+    this.startRenderLoop();
   }
 
   ngOnDestroy() {
@@ -329,12 +331,15 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         // Load texture
         const texture = await this.loadTexture(imageUrl?.url || '');
         
-        // Create sphere geometry
-        const geometry = new THREE.SphereGeometry(500, 60, 40);
-        geometry.scale(-1, 1, 1); // Invert the sphere
+        // Create sphere geometry for 360° viewing
+        const geometry = new THREE.SphereGeometry(100, 60, 40);
+        geometry.scale(-1, 1, 1); // Invert the sphere (inside-out)
 
         // Create material with texture
-        const material = new THREE.MeshBasicMaterial({ map: texture });
+        const material = new THREE.MeshBasicMaterial({ 
+          map: texture,
+          side: THREE.DoubleSide // Render both sides
+        });
         
         // Create sphere mesh
         this.sphere = new THREE.Mesh(geometry, material);
@@ -363,12 +368,15 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         // Load texture
         const texture = await this.loadTexture(imageUrl?.url || '');
         
-        // Create sphere geometry
-        const geometry = new THREE.SphereGeometry(500, 60, 40);
-        geometry.scale(-1, 1, 1); // Invert the sphere
+        // Create sphere geometry for 360° viewing
+        const geometry = new THREE.SphereGeometry(100, 60, 40);
+        geometry.scale(-1, 1, 1); // Invert the sphere (inside-out)
 
         // Create material with texture
-        const material = new THREE.MeshBasicMaterial({ map: texture });
+        const material = new THREE.MeshBasicMaterial({ 
+          map: texture,
+          side: THREE.DoubleSide // Render both sides
+        });
         
         // Create sphere mesh
         this.sphere = new THREE.Mesh(geometry, material);
@@ -431,10 +439,22 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     this.controls.dampingFactor = 0.05;
     this.controls.enableZoom = true;
     this.controls.enablePan = false;
-    this.controls.rotateSpeed = 0.5;
+    this.controls.enableRotate = true;
+    this.controls.rotateSpeed = 1.0;
+    this.controls.autoRotate = false;
+    this.controls.minDistance = 0.1;
+    this.controls.maxDistance = 1000;
 
-    // Set initial camera position
+    // Set initial camera position (at center of sphere for 360° viewing)
     this.camera.position.set(0, 0, 0);
+    
+    // Debug logging
+    console.log('Three.js controls initialized:', this.controls);
+    
+    // Add event listeners for debugging
+    this.controls.addEventListener('start', () => console.log('Controls: Mouse interaction started'));
+    this.controls.addEventListener('change', () => console.log('Controls: Camera position changed'));
+    this.controls.addEventListener('end', () => console.log('Controls: Mouse interaction ended'));
 
     // Handle window resize
     window.addEventListener('resize', () => this.onWindowResize());
@@ -444,11 +464,33 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     const animate = () => {
       this.animationId = requestAnimationFrame(animate);
       
-      this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      try {
+        if (this.controls) {
+          this.controls.update();
+        }
+        if (this.renderer && this.scene && this.camera) {
+          this.renderer.render(this.scene, this.camera);
+        }
+      } catch (error) {
+        console.error('Render loop error:', error);
+      }
     };
     
     animate();
+  }
+
+  formatDistance(distance: any): string {
+    if (distance === null || distance === undefined) {
+      return '0.00';
+    }
+    
+    const numDistance = typeof distance === 'string' ? parseFloat(distance) : distance;
+    
+    if (isNaN(numDistance)) {
+      return '0.00';
+    }
+    
+    return numDistance.toFixed(2);
   }
 
   private onWindowResize() {
@@ -513,15 +555,22 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   private async loadMeasurements(): Promise<Measurement[]> {
     try {
       const measurements = await this.measurementService.getMeasurements(this.currentRoomId).toPromise();
-      return (measurements || []).map(measurement => ({
-        ...measurement,
-        points: typeof measurement.points === 'string' 
-          ? JSON.parse(measurement.points) 
-          : measurement.points
-      }));
+      return (measurements || []).map(measurement => {
+        // Debug logging
+        console.log('Raw measurement from API:', measurement);
+        console.log('Distance type:', typeof measurement.distance, 'Value:', measurement.distance);
+        
+        return {
+          ...measurement,
+          points: typeof measurement.points === 'string' 
+            ? JSON.parse(measurement.points) 
+            : measurement.points,
+          distance: measurement.distance ? parseFloat(measurement.distance.toString()) : undefined
+        };
+      });
     } catch (error) {
       console.error('Error loading measurements:', error);
-    return [];
+      return [];
     }
   }
 
