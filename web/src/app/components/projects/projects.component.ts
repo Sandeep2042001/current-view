@@ -32,11 +32,11 @@ import { Project } from '../../models/user.model';
           
           <!-- Project Image -->
           <div class="project-image">
-            <div class="image-placeholder" *ngIf="!project.metadata?.preview_image">
+            <div class="image-placeholder" *ngIf="!project.metadata?.['preview_image']">
               <i class="material-icons">360</i>
             </div>
-            <img *ngIf="project.metadata?.preview_image" 
-                 [src]="project.metadata.preview_image" 
+            <img *ngIf="project.metadata?.['preview_image']" 
+                 [src]="project.metadata?.['preview_image']" 
                  [alt]="project.name">
             
             <!-- Status Badge -->
@@ -53,11 +53,11 @@ import { Project } from '../../models/user.model';
             <div class="project-stats">
               <div class="stat">
                 <i class="material-icons">room</i>
-                <span>{{ project.rooms?.length || 0 }} rooms</span>
+                <span>{{ project.room_count || 0 }} rooms</span>
               </div>
               <div class="stat">
                 <i class="material-icons">schedule</i>
-                <span>{{ formatDate(project.createdAt) }}</span>
+                <span>{{ formatDate(project.created_at) }}</span>
               </div>
             </div>
           </div>
@@ -170,7 +170,7 @@ export class ProjectsComponent implements OnInit {
   async loadProjects() {
     try {
       this.loading = true;
-      this.projects = await this.projectService.getProjects().toPromise();
+      this.projects = await this.projectService.getProjects().toPromise() || [];
     } catch (error) {
       this.toastr.error('Failed to load projects');
       console.error('Error loading projects:', error);
@@ -193,8 +193,15 @@ export class ProjectsComponent implements OnInit {
     if (this.createForm.valid) {
       try {
         this.creating = true;
-        const project = await this.projectService.createProject(this.createForm.value).toPromise();
-        this.projects.unshift(project);
+        const formValue = this.createForm.value;
+        const projectData = {
+          name: formValue.name || '',
+          description: formValue.description || ''
+        };
+        const project = await this.projectService.createProject(projectData).toPromise();
+        if (project) {
+          this.projects.unshift(project);
+        }
         this.closeCreateModal();
         this.toastr.success('Project created successfully!');
       } catch (error) {
@@ -228,7 +235,12 @@ export class ProjectsComponent implements OnInit {
     }
   }
 
-  formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString();
+  formatDate(dateString: string | undefined): string {
+    if (!dateString) return 'Unknown';
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch (error) {
+      return 'Invalid Date';
+    }
   }
 }

@@ -23,7 +23,7 @@ import { Project, Room } from '../../models/user.model';
                 {{ project?.status | titlecase }}
               </span>
               <span class="created-date">
-                Created {{ formatDate(project?.createdAt) }}
+                Created {{ formatDate(project?.created_at) }}
               </span>
             </div>
           </div>
@@ -94,11 +94,11 @@ import { Project, Room } from '../../models/user.model';
             
             <!-- Room Image -->
             <div class="room-image">
-              <div class="image-placeholder" *ngIf="!room.metadata?.preview_image">
+              <div class="image-placeholder" *ngIf="!room.metadata?.['preview_image']">
                 <i class="material-icons">room</i>
               </div>
-              <img *ngIf="room.metadata?.preview_image" 
-                   [src]="room.metadata.preview_image" 
+              <img *ngIf="room.metadata?.['preview_image']" 
+                   [src]="room.metadata?.['preview_image']" 
                    [alt]="room.name">
               
               <!-- Status Badge -->
@@ -127,17 +127,17 @@ import { Project, Room } from '../../models/user.model';
             <!-- Room Actions -->
             <div class="room-actions">
               <button (click)="viewRoom(room); $event.stopPropagation()" 
-                      class="action-btn primary">
+                      class="room-btn primary">
                 <i class="material-icons">visibility</i>
                 View
               </button>
               <button (click)="editRoom(room); $event.stopPropagation()" 
-                      class="action-btn secondary">
+                      class="room-btn secondary">
                 <i class="material-icons">edit</i>
                 Edit
               </button>
               <button (click)="deleteRoom(room); $event.stopPropagation()" 
-                      class="action-btn danger">
+                      class="room-btn danger">
                 <i class="material-icons">delete</i>
                 Delete
               </button>
@@ -175,15 +175,15 @@ import { Project, Room } from '../../models/user.model';
             <div class="model-stats">
               <div class="stat">
                 <span class="label">Vertices:</span>
-                <span class="value">{{ project?.metadata?.model_vertices || 0 }}</span>
+                <span class="value">{{ project?.metadata?.['model_vertices'] || 0 }}</span>
               </div>
               <div class="stat">
                 <span class="label">Faces:</span>
-                <span class="value">{{ project?.metadata?.model_faces || 0 }}</span>
+                <span class="value">{{ project?.metadata?.['model_faces'] || 0 }}</span>
               </div>
               <div class="stat">
                 <span class="label">Quality:</span>
-                <span class="value">{{ (project?.metadata?.reconstruction_quality?.overall || 0) * 100 | number:'1.0-0' }}%</span>
+                <span class="value">{{ (project?.metadata?.['reconstruction_quality']?.overall || 0) * 100 | number:'1.0-0' }}%</span>
               </div>
             </div>
             <button (click)="viewIn3D()" class="view-model-btn">
@@ -199,7 +199,7 @@ import { Project, Room } from '../../models/user.model';
 })
 export class ProjectDetailComponent implements OnInit {
   projectId!: string;
-  project!: Project;
+  project: Project | null = null;
   rooms: Room[] = [];
   processingJobs: any[] = [];
   loading = false;
@@ -222,8 +222,8 @@ export class ProjectDetailComponent implements OnInit {
   async loadProject() {
     try {
       this.loading = true;
-      this.project = await this.projectService.getProject(this.projectId).toPromise();
-      this.rooms = this.project.rooms || [];
+      this.project = await this.projectService.getProject(this.projectId).toPromise() || null;
+      this.rooms = this.project?.rooms || [];
       await this.loadProcessingJobs();
     } catch (error) {
       this.toastr.error('Failed to load project');
@@ -235,7 +235,7 @@ export class ProjectDetailComponent implements OnInit {
 
   async loadProcessingJobs() {
     try {
-      this.processingJobs = await this.processingService.getJobs(this.projectId).toPromise();
+      this.processingJobs = await this.processingService.getJobs(this.projectId).toPromise() || [];
     } catch (error) {
       console.error('Error loading processing jobs:', error);
     }
@@ -247,22 +247,60 @@ export class ProjectDetailComponent implements OnInit {
   }
 
   get has3DModel(): boolean {
-    return this.project?.metadata?.has_3d_model === true;
+    return this.project?.metadata?.['has_3d_model'] === true;
   }
 
   async startProcessing() {
     try {
+      // Check for rooms that need processing
+      const pendingRooms = this.rooms.filter(room => room.status === 'pending' && room.images && room.images.length > 0);
       const completedRooms = this.rooms.filter(room => room.status === 'completed');
       
+      if (pendingRooms.length > 0) {
+        const confirmProcess = confirm(
+          `Found ${pendingRooms.length} rooms ready for processing.\n\n` +
+          'This will start stitching for all rooms with images. Continue?'
+        );
+        
+        if (!confirmProcess) return;
+        
+        // Process all pending rooms
+        for (const room of pendingRooms) {
+          if (room.images && room.images.length === 1) {
+            // Single image - mark as completed
+            room.status = 'completed';
+            this.toastr.success(`Room "${room.name}" processed (single image)`);
+          } else if (room.images && room.images.length > 1) {
+            // Multiple images - start stitching
+            try {
+              await this.processingService.startStitching(room.id).toPromise();
+              this.toastr.success(`Stitching started for room "${room.name}"`);
+            } catch (error) {
+              console.error(`Failed to start stitching for room ${room.name}:`, error);
+              this.toastr.warning(`Skipped room "${room.name}" - processing failed`);
+            }
+          }
+        }
+        
+        await this.loadProcessingJobs();
+        return;
+      }
+      
       if (completedRooms.length === 0) {
-        this.toastr.warning('No completed rooms available for processing');
+        this.toastr.warning('No rooms available for processing. Please upload images to rooms first.');
         return;
       }
 
-      // Start 3D reconstruction
-      await this.processingService.start3DReconstruction(this.projectId).toPromise();
-      this.toastr.success('3D reconstruction started');
-      await this.loadProcessingJobs();
+      // Start 3D reconstruction for completed rooms
+      const confirm3D = confirm(
+        `Start 3D model generation for ${completedRooms.length} completed rooms?`
+      );
+      
+      if (confirm3D) {
+        await this.processingService.start3DReconstruction(this.projectId).toPromise();
+        this.toastr.success('3D reconstruction started');
+        await this.loadProcessingJobs();
+      }
     } catch (error) {
       this.toastr.error('Failed to start processing');
       console.error('Error starting processing:', error);
@@ -275,8 +313,40 @@ export class ProjectDetailComponent implements OnInit {
   }
 
   exportProject() {
-    // TODO: Implement project export
-    this.toastr.info('Project export feature coming soon!');
+    if (!this.project) return;
+    
+    // Create export data
+    const exportData = {
+      project: {
+        id: this.project.id,
+        name: this.project.name,
+        description: this.project.description,
+        created_at: this.project.created_at,
+        metadata: this.project.metadata
+      },
+      rooms: this.rooms.map(room => ({
+        id: room.id,
+        name: room.name,
+        description: room.description,
+        status: room.status,
+        images_count: room.images?.length || 0,
+        hotspots_count: room.hotspots?.length || 0,
+        created_at: room.created_at
+      })),
+      processing_jobs: this.processingJobs,
+      export_timestamp: new Date().toISOString()
+    };
+    
+    // Download as JSON file
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(dataBlob);
+    link.download = `${this.project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_export.json`;
+    link.click();
+    
+    this.toastr.success('Project data exported successfully!');
   }
 
   addRoom() {
@@ -289,7 +359,9 @@ export class ProjectDetailComponent implements OnInit {
   async createRoom(name: string) {
     try {
       const room = await this.projectService.createRoom(this.projectId, { name }).toPromise();
-      this.rooms.push(room);
+      if (room) {
+        this.rooms.push(room);
+      }
       this.toastr.success('Room created successfully');
     } catch (error) {
       this.toastr.error('Failed to create room');
@@ -323,7 +395,7 @@ export class ProjectDetailComponent implements OnInit {
     }
   }
 
-  formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString();
+  formatDate(dateString: string | undefined): string {
+    return dateString ? new Date(dateString).toLocaleDateString() : 'Unknown';
   }
 }

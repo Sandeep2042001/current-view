@@ -1,10 +1,12 @@
 const express = require('express');
-const authMiddleware = require('../middleware/auth');
+const { authMiddleware } = require('../middleware/auth');
 
 // Import all route modules
 const authRoutes = require('./auth');
 const projectRoutes = require('./projects');
-const uploadRoutes = require('./upload');
+const uploadModule = require('./upload');
+const uploadRoutes = uploadModule.router;
+const imageDataRoute = uploadModule.imageDataRoute;
 const processingRoutes = require('./processing');
 const adminRoutes = require('./admin');
 const measurementRoutes = require('./measurements');
@@ -14,6 +16,9 @@ const router = express.Router();
 
 // Public routes (no authentication required)
 router.use('/auth', authRoutes);
+
+// Public image serving (no authentication required)
+router.use('/upload/image-data', imageDataRoute);
 
 // Protected routes (authentication required)
 router.use('/projects', authMiddleware, projectRoutes);

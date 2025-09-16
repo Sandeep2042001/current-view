@@ -230,4 +230,23 @@ router.post('/jobs/clear-failed', async (req, res) => {
   }
 });
 
+// Clear pending jobs (for stuck jobs)
+router.post('/jobs/clear-pending', async (req, res) => {
+  try {
+    const result = await db('processing_jobs')
+      .where({ status: 'pending' })
+      .del();
+
+    logger.info(`Cleared ${result} pending jobs by admin ${req.user.id}`);
+
+    res.json({
+      message: `Cleared ${result} pending jobs`,
+      count: result
+    });
+  } catch (error) {
+    logger.error('Error clearing pending jobs:', error);
+    res.status(500).json({ error: 'Failed to clear pending jobs' });
+  }
+});
+
 module.exports = router;

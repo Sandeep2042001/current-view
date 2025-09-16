@@ -1,10 +1,12 @@
 import { Component, OnInit, OnDestroy, ElementRef, ViewChild, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ProjectService } from '../../services/project.service';
 import { UploadService } from '../../services/upload.service';
 import { AnnotationService } from '../../services/annotation.service';
 import { MeasurementService } from '../../services/measurement.service';
+import { ProcessingService } from '../../services/processing.service';
 import { ToastrService } from 'ngx-toastr';
 import { Project, Room, Hotspot, Annotation, Measurement } from '../../models/user.model';
 
@@ -17,7 +19,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
 @Component({
   selector: 'app-viewer',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="viewer-container">
       <!-- Viewer Controls -->
@@ -35,6 +37,9 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
           <button (click)="toggleMeasurements()" class="control-btn" title="Toggle Measurements">
             <i class="material-icons">{{ showMeasurements ? 'straighten' : 'straighten' }}</i>
           </button>
+          <button (click)="triggerFileUpload()" class="control-btn upload-btn" title="Upload 360° Image">
+            <i class="material-icons">camera_alt</i>
+          </button>
         </div>
 
         <div class="room-navigation" *ngIf="rooms.length > 1">
@@ -43,6 +48,14 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
           </select>
         </div>
       </div>
+
+      <!-- Hidden File Input -->
+      <input #fileInput 
+             type="file" 
+             accept="image/*" 
+             (change)="onFileSelected($event)" 
+             style="display: none;"
+             multiple>
 
       <!-- 360° Viewer Canvas -->
       <div #viewerContainer class="viewer-canvas-container">
@@ -57,8 +70,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
         <!-- Hotspots -->
         <div *ngFor="let hotspot of hotspots" 
              class="hotspot" 
-             [style.left.px]="hotspot.screenPosition.x" 
-             [style.top.px]="hotspot.screenPosition.y"
+              [style.left.px]="hotspot.screenPosition?.x || 0"
+              [style.top.px]="hotspot.screenPosition?.y || 0"
              [class]="'hotspot-' + hotspot.type"
              (click)="onHotspotClick(hotspot)">
           <div class="hotspot-icon">
@@ -74,8 +87,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
         <div *ngIf="showAnnotations" class="annotations-overlay">
           <div *ngFor="let annotation of annotations" 
                class="annotation"
-               [style.left.px]="annotation.screenPosition.x"
-               [style.top.px]="annotation.screenPosition.y">
+                [style.left.px]="annotation.screenPosition?.x || 0"
+                [style.top.px]="annotation.screenPosition?.y || 0">
             <div class="annotation-marker" [class]="'annotation-' + annotation.type">
               <i class="material-icons">{{ getAnnotationIcon(annotation.type) }}</i>
             </div>
@@ -90,24 +103,42 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
         <div *ngIf="showMeasurements" class="measurements-overlay">
           <div *ngFor="let measurement of measurements" 
                class="measurement"
-               [style.left.px]="measurement.screenPosition.x"
-               [style.top.px]="measurement.screenPosition.y">
+                [style.left.px]="measurement.screenPosition?.x || 0"
+                [style.top.px]="measurement.screenPosition?.y || 0">
             <div class="measurement-line"></div>
             <div class="measurement-label">
-              {{ measurement.distance?.toFixed(2) }} {{ measurement.unit }}
+              {{ formatDistance(measurement.distance) }} {{ measurement.unit }}
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Minimap -->
-      <div class="minimap" *ngIf="showMinimap">
-        <div class="minimap-header">
+      <!-- Floor Plan - Coming Soon -->
+      <div class="floor-plan-modal" *ngIf="showMinimap">
+        <div class="modal-header">
           <h4>Floor Plan</h4>
-          <button (click)="toggleMinimap()" class="minimap-close">×</button>
+          <button (click)="toggleMinimap()" class="modal-close">×</button>
         </div>
-        <div class="minimap-content">
-          <canvas #minimapCanvas class="minimap-canvas"></canvas>
+        <div class="modal-content">
+          <div class="coming-soon">
+            <i class="material-icons">construction</i>
+            <h3>Floor Plan Coming Soon</h3>
+            <p>Floor plan generation is currently under development. This feature will automatically create a 2D floor plan from your 360° images.</p>
+            <div class="features-list">
+              <div class="feature-item">
+                <i class="material-icons">check</i>
+                <span>Automatic room layout detection</span>
+              </div>
+              <div class="feature-item">
+                <i class="material-icons">check</i>
+                <span>Interactive navigation overlay</span>
+              </div>
+              <div class="feature-item">
+                <i class="material-icons">check</i>
+                <span>Room connections mapping</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -118,21 +149,57 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
           <button (click)="toggleInfoPanel()" class="info-close">×</button>
         </div>
         <div class="info-content">
-          <p>{{ currentRoom?.description }}</p>
+          <p>{{ currentRoom?.description || 'No description provided' }}</p>
+          
           <div class="room-stats">
             <div class="stat">
               <span class="stat-label">Images:</span>
               <span class="stat-value">{{ currentRoom?.images?.length || 0 }}</span>
             </div>
             <div class="stat">
-              <span class="stat-label">Hotspots:</span>
-              <span class="stat-value">{{ hotspots.length }}</span>
+              <span class="stat-label">Annotations:</span>
+              <span class="stat-value">{{ annotations.length }}</span>
+              <span class="stat-help" title="Manual annotations you've added">ⓘ</span>
             </div>
             <div class="stat">
-              <span class="stat-label">Status:</span>
-              <span class="stat-value" [class]="'status-' + currentRoom?.status">
-                {{ currentRoom?.status }}
-              </span>
+              <span class="stat-label">Hotspots:</span>
+              <span class="stat-value">{{ hotspots.length }}</span>
+              <span class="stat-help" title="Auto-generated navigation points">ⓘ</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Measurements:</span>
+              <span class="stat-value">{{ measurements.length }}</span>
+            </div>
+          </div>
+
+          <div class="room-status">
+            <h4>Processing Status</h4>
+            <div class="status-indicator" [class]="'status-' + currentRoom?.status">
+              <i class="material-icons">{{ getStatusIcon(currentRoom?.status || 'pending') }}</i>
+              <div class="status-details">
+                <span class="status-label">{{ getStatusLabel(currentRoom?.status || 'pending') }}</span>
+                <span class="status-description">{{ getStatusDescription(currentRoom?.status || 'pending') }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-actions" *ngIf="currentRoom?.status === 'pending'">
+            <button (click)="startRoomProcessing()" class="action-btn primary">
+              <i class="material-icons">play_arrow</i>
+              Start Processing
+            </button>
+          </div>
+
+          <div class="info-help">
+            <h4>Need Help?</h4>
+            <div class="help-item">
+              <strong>Annotations:</strong> Click "Add Annotation" to manually mark points of interest
+            </div>
+            <div class="help-item">
+              <strong>Hotspots:</strong> Auto-generated after processing to connect rooms
+            </div>
+            <div class="help-item">
+              <strong>Processing:</strong> Converts your images into a navigable 360° experience
             </div>
           </div>
         </div>
@@ -164,6 +231,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('viewerContainer', { static: true }) viewerContainer!: ElementRef;
   @ViewChild('viewerCanvas', { static: true }) viewerCanvas!: ElementRef;
   @ViewChild('minimapCanvas', { static: true }) minimapCanvas!: ElementRef;
+  @ViewChild('fileInput', { static: false }) fileInput!: ElementRef<HTMLInputElement>;
 
   // Three.js objects
   private scene!: THREE.Scene;
@@ -176,7 +244,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   // Component state
   projectId!: string;
   currentRoomId!: string;
-  project!: Project;
+  project: Project | null = null;
   rooms: Room[] = [];
   currentRoom!: Room;
   hotspots: Hotspot[] = [];
@@ -209,6 +277,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     private uploadService: UploadService,
     private annotationService: AnnotationService,
     private measurementService: MeasurementService,
+    private processingService: ProcessingService,
     private toastr: ToastrService
   ) {}
 
@@ -222,6 +291,8 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngAfterViewInit() {
     this.initThreeJS();
+    // Start render loop immediately
+    this.startRenderLoop();
   }
 
   ngOnDestroy() {
@@ -238,8 +309,8 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loading = true;
       this.loadingMessage = 'Loading project...';
 
-      this.project = await this.projectService.getProject(this.projectId).toPromise();
-      this.rooms = this.project.rooms || [];
+      this.project = await this.projectService.getProject(this.projectId).toPromise() || null;
+      this.rooms = this.project?.rooms || [];
 
       if (this.rooms.length === 0) {
         this.toastr.error('No rooms found in this project');
@@ -265,6 +336,9 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       this.loadingMessage = 'Loading room data...';
 
+      // Refresh room data from server to get latest images
+      await this.refreshCurrentRoom();
+
       // Load hotspots
       this.hotspots = this.currentRoom.hotspots || [];
       this.calculateHotspotScreenPositions();
@@ -286,35 +360,93 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  private async refreshCurrentRoom() {
+    try {
+      // Get fresh project data with room images
+      const project = await this.projectService.getProject(this.projectId).toPromise();
+      if (project && project.rooms) {
+        const room = project.rooms.find(r => r.id === this.currentRoomId);
+        if (room) {
+          this.currentRoom = room;
+          console.log('Refreshed room data:', this.currentRoom);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing room data:', error);
+    }
+  }
+
   private async load360Image() {
     try {
       this.loadingMessage = 'Loading 360° image...';
 
-      if (this.currentRoom.metadata?.stitched_image_path) {
+      if (this.currentRoom.metadata?.['stitched_image_path']) {
         // Get presigned URL for the stitched image
-        const imageUrl = await this.uploadService.getImageUrl(this.currentRoom.metadata.stitched_image_path).toPromise();
+        const imageUrl = await this.uploadService.getImageUrl(this.currentRoom.metadata['stitched_image_path']).toPromise();
         
         // Load texture
-        const texture = await this.loadTexture(imageUrl);
+        const texture = await this.loadTexture(imageUrl?.url || '');
         
-        // Create sphere geometry
-        const geometry = new THREE.SphereGeometry(500, 60, 40);
-        geometry.scale(-1, 1, 1); // Invert the sphere
+        // Create sphere geometry for 360° viewing
+        const geometry = new THREE.SphereGeometry(100, 60, 40);
+        geometry.scale(-1, 1, 1); // Invert the sphere (inside-out)
 
         // Create material with texture
-        const material = new THREE.MeshBasicMaterial({ map: texture });
+        const material = new THREE.MeshBasicMaterial({ 
+          map: texture,
+          side: THREE.DoubleSide // Render both sides
+        });
         
         // Create sphere mesh
         this.sphere = new THREE.Mesh(geometry, material);
         this.scene.add(this.sphere);
 
         this.startRenderLoop();
+      } 
+      // Check for individual uploaded images
+      else if (this.currentRoom.images && this.currentRoom.images.length > 0) {
+        // Use the first uploaded image as a 360° view
+        const firstImage = this.currentRoom.images[0];
+        
+        // Debug logging
+        console.log('First image object:', firstImage);
+        console.log('Storage path:', firstImage.storage_path);
+        console.log('Available properties:', Object.keys(firstImage));
+        
+        if (!firstImage.storage_path) {
+          this.toastr.error('Image storage path is missing. Image object: ' + JSON.stringify(firstImage));
+          return;
+        }
+        
+        // Get image URL using the image ID
+        const imageUrl = await this.uploadService.getImageUrl(firstImage.id).toPromise();
+        
+        // Load texture
+        const texture = await this.loadTexture(imageUrl?.url || '');
+        
+        // Create sphere geometry for 360° viewing
+        const geometry = new THREE.SphereGeometry(100, 60, 40);
+        geometry.scale(-1, 1, 1); // Invert the sphere (inside-out)
+
+        // Create material with texture
+        const material = new THREE.MeshBasicMaterial({ 
+          map: texture,
+          side: THREE.DoubleSide // Render both sides
+        });
+        
+        // Create sphere mesh
+        this.sphere = new THREE.Mesh(geometry, material);
+        this.scene.add(this.sphere);
+
+        this.startRenderLoop();
+        this.toastr.success('360° view loaded successfully!');
       } else {
-        this.toastr.warning('No 360° image available for this room');
+        this.toastr.warning('No images available for this room. Please upload some images first.');
       }
 
     } catch (error) {
-      this.toastr.error('Failed to load 360° image');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.toastr.error('Failed to load 360° image: ' + errorMessage);
       console.error('Error loading 360° image:', error);
     }
   }
@@ -363,10 +495,22 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     this.controls.dampingFactor = 0.05;
     this.controls.enableZoom = true;
     this.controls.enablePan = false;
-    this.controls.rotateSpeed = 0.5;
+    this.controls.enableRotate = true;
+    this.controls.rotateSpeed = 1.0;
+    this.controls.autoRotate = false;
+    this.controls.minDistance = 0.1;
+    this.controls.maxDistance = 1000;
 
-    // Set initial camera position
+    // Set initial camera position (at center of sphere for 360° viewing)
     this.camera.position.set(0, 0, 0);
+    
+    // Debug logging
+    console.log('Three.js controls initialized:', this.controls);
+    
+    // Add event listeners for debugging
+    this.controls.addEventListener('start', () => console.log('Controls: Mouse interaction started'));
+    this.controls.addEventListener('change', () => console.log('Controls: Camera position changed'));
+    this.controls.addEventListener('end', () => console.log('Controls: Mouse interaction ended'));
 
     // Handle window resize
     window.addEventListener('resize', () => this.onWindowResize());
@@ -376,11 +520,33 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     const animate = () => {
       this.animationId = requestAnimationFrame(animate);
       
-      this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      try {
+        if (this.controls) {
+          this.controls.update();
+        }
+        if (this.renderer && this.scene && this.camera) {
+          this.renderer.render(this.scene, this.camera);
+        }
+      } catch (error) {
+        console.error('Render loop error:', error);
+      }
     };
     
     animate();
+  }
+
+  formatDistance(distance: any): string {
+    if (distance === null || distance === undefined) {
+      return '0.00';
+    }
+    
+    const numDistance = typeof distance === 'string' ? parseFloat(distance) : distance;
+    
+    if (isNaN(numDistance)) {
+      return '0.00';
+    }
+    
+    return numDistance.toFixed(2);
   }
 
   private onWindowResize() {
@@ -430,7 +596,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   private async loadAnnotations(): Promise<Annotation[]> {
     try {
       const annotations = await this.annotationService.getAnnotations(this.currentRoomId).toPromise();
-      return annotations.map(annotation => ({
+      return (annotations || []).map(annotation => ({
         ...annotation,
         coordinates: typeof annotation.coordinates === 'string' 
           ? JSON.parse(annotation.coordinates) 
@@ -438,19 +604,26 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       }));
     } catch (error) {
       console.error('Error loading annotations:', error);
-      return [];
+    return [];
     }
   }
 
   private async loadMeasurements(): Promise<Measurement[]> {
     try {
       const measurements = await this.measurementService.getMeasurements(this.currentRoomId).toPromise();
-      return measurements.map(measurement => ({
-        ...measurement,
-        points: typeof measurement.points === 'string' 
-          ? JSON.parse(measurement.points) 
-          : measurement.points
-      }));
+      return (measurements || []).map(measurement => {
+        // Debug logging
+        console.log('Raw measurement from API:', measurement);
+        console.log('Distance type:', typeof measurement.distance, 'Value:', measurement.distance);
+        
+        return {
+          ...measurement,
+          points: typeof measurement.points === 'string' 
+            ? JSON.parse(measurement.points) 
+            : measurement.points,
+          distance: measurement.distance ? parseFloat(measurement.distance.toString()) : undefined
+        };
+      });
     } catch (error) {
       console.error('Error loading measurements:', error);
       return [];
@@ -459,8 +632,8 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // UI Event Handlers
   onHotspotClick(hotspot: Hotspot) {
-    if (hotspot.type === 'navigation' && hotspot.targetRoomId) {
-      this.switchToRoom(hotspot.targetRoomId);
+    if (hotspot.type === 'navigation' && hotspot.target_room_id) {
+      this.switchToRoom(hotspot.target_room_id);
     } else {
       this.toastr.info(hotspot.title || 'Hotspot clicked');
     }
@@ -500,6 +673,63 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
 
   toggleMeasurements() {
     this.showMeasurements = !this.showMeasurements;
+  }
+
+  // Upload Methods
+  triggerFileUpload() {
+    this.fileInput.nativeElement.click();
+  }
+
+  onFileSelected(event: any) {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        this.uploadImage(files[i]);
+      }
+    }
+    // Reset the input
+    event.target.value = '';
+  }
+
+  uploadImage(file: File) {
+    if (!this.currentRoomId) {
+      this.toastr.error('No room selected');
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      this.toastr.error('Please select image files only');
+      return;
+    }
+
+    // Validate file size (max 50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      this.toastr.error('File size must be less than 50MB');
+      return;
+    }
+
+    this.loading = true;
+    this.loadingMessage = 'Uploading image...';
+
+    const metadata = {
+      originalName: file.name,
+      size: file.size,
+      type: file.type,
+      uploadedAt: new Date().toISOString()
+    };
+
+    this.uploadService.uploadImage(this.currentRoomId, file, metadata).subscribe({
+      next: (response) => {
+        this.toastr.success('Image uploaded successfully!');
+        this.loadRoomData(); // Refresh the room data
+        this.loading = false;
+      },
+      error: (error) => {
+        this.toastr.error('Upload failed: ' + (error.error?.error || 'Unknown error'));
+        this.loading = false;
+      }
+    });
   }
 
   toggleMinimap() {
@@ -606,7 +836,9 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
           }
         }).toPromise();
         
-        this.annotations.push(annotation);
+        if (annotation) {
+          this.annotations.push(annotation);
+        }
         this.calculateAnnotationScreenPositions();
         this.toastr.success('Annotation added successfully');
         
@@ -662,7 +894,9 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         label: `${this.measurementType} measurement`
       }).toPromise();
       
-      this.measurements.push(measurement);
+      if (measurement) {
+        this.measurements.push(measurement);
+      }
       this.calculateMeasurementScreenPositions();
       this.toastr.success('Measurement created successfully');
       
@@ -701,5 +935,143 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       case 'line': return 'timeline';
       default: return 'place';
     }
+  }
+
+  getStatusIcon(status: string | undefined): string {
+    switch (status) {
+      case 'pending': return 'hourglass_empty';
+      case 'processing': return 'hourglass_top';
+      case 'completed': return 'check_circle';
+      case 'failed': return 'error';
+      default: return 'help';
+    }
+  }
+
+  getStatusLabel(status: string | undefined): string {
+    switch (status) {
+      case 'pending': return 'Pending Processing';
+      case 'processing': return 'Processing Images';
+      case 'completed': return 'Ready to View';
+      case 'failed': return 'Processing Failed';
+      default: return 'Unknown Status';
+    }
+  }
+
+  getStatusDescription(status: string | undefined): string {
+    const imageCount = this.currentRoom?.images?.length || 0;
+    
+    switch (status) {
+      case 'pending': 
+        if (imageCount < 1) {
+          return 'Upload images to get started with your 360° room.';
+        } else if (imageCount === 1) {
+          return 'You have 1 image. You can process it as a single 360° view or upload more for stitching.';
+        } else {
+          return `You have ${imageCount} images ready for stitching. Click "Start Processing" to begin.`;
+        }
+      case 'processing': return 'Images are being stitched and hotspots generated. Please wait...';
+      case 'completed': return 'Room processing completed successfully. Navigation and hotspots are available.';
+      case 'failed': return 'Processing encountered an error. Try uploading images again.';
+      default: return 'Status information not available.';
+    }
+  }
+
+  async startRoomProcessing() {
+    if (!this.currentRoom) return;
+    
+    const imageCount = this.currentRoom.images?.length || 0;
+    
+    // Validate image requirements
+    if (imageCount < 1) {
+      this.toastr.error('Please upload at least one image before processing');
+      return;
+    }
+    
+    if (imageCount < 2) {
+      // For single image, we can still process it as a 360° view
+      const confirmSingle = confirm(
+        `You have ${imageCount} image. For best results, upload more images for stitching.\n\n` +
+        'Would you like to:\n' +
+        '• Continue with single image (basic 360° view)\n' +
+        '• Cancel and upload more images'
+      );
+      
+      if (!confirmSingle) {
+        return;
+      }
+      
+      // Process single image as completed
+      try {
+        this.loading = true;
+        this.loadingMessage = 'Processing single image...';
+        
+        // For single images, just mark as completed directly
+        this.currentRoom.status = 'completed';
+        this.toastr.success('Single image processed successfully! 360° view is ready.');
+        
+        // Refresh room data
+        await this.refreshCurrentRoom();
+        await this.loadRoomData();
+        
+      } catch (error) {
+        this.toastr.error('Failed to process single image');
+        console.error('Single image processing error:', error);
+      } finally {
+        this.loading = false;
+      }
+      return;
+    }
+    
+    // Process multiple images with stitching
+    try {
+      this.loading = true;
+      this.loadingMessage = `Starting stitching process for ${imageCount} images...`;
+      
+      // Start stitching process
+      const result = await this.processingService.startStitching(this.currentRoom.id).toPromise();
+      
+      if (result) {
+        this.toastr.success(`Room processing started! Stitching ${imageCount} images...`);
+        // Update room status
+        this.currentRoom.status = 'processing';
+        
+        // Start polling for completion
+        this.pollProcessingStatus(result.jobId);
+      }
+    } catch (error: any) {
+      const errorMessage = error?.error?.error || 'Failed to start room processing';
+      this.toastr.error(errorMessage);
+      console.error('Processing error:', error);
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  private pollProcessingStatus(jobId: string) {
+    const pollInterval = setInterval(async () => {
+      try {
+        const status = await this.processingService.getJobStatus(jobId).toPromise();
+        
+        if (status.status === 'completed') {
+          clearInterval(pollInterval);
+          this.toastr.success('Room processing completed!');
+          this.currentRoom.status = 'completed';
+          await this.refreshCurrentRoom();
+          await this.loadRoomData();
+        } else if (status.status === 'failed') {
+          clearInterval(pollInterval);
+          this.toastr.error('Room processing failed: ' + status.error_message);
+          this.currentRoom.status = 'failed';
+        }
+      } catch (error) {
+        console.error('Error polling job status:', error);
+        clearInterval(pollInterval);
+      }
+    }, 5000); // Poll every 5 seconds
+    
+    // Stop polling after 10 minutes
+    setTimeout(() => {
+      clearInterval(pollInterval);
+    }, 600000);
   }
 }

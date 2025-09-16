@@ -36,13 +36,7 @@ import { AppRoutes } from './app.routes';
 
 @NgModule({
   declarations: [
-    AppComponent,
-    LoginComponent,
-    RegisterComponent,
-    ProjectsComponent,
-    ProjectDetailComponent,
-    ViewerComponent,
-    AdminDashboardComponent
+    AppComponent
   ],
   imports: [
     BrowserModule,
@@ -56,7 +50,14 @@ import { AppRoutes } from './app.routes';
       positionClass: 'toast-top-right',
       preventDuplicates: true,
     }),
-    NgxSpinnerModule
+    NgxSpinnerModule,
+    // Import standalone components
+    LoginComponent,
+    RegisterComponent,
+    ProjectsComponent,
+    ProjectDetailComponent,
+    ViewerComponent,
+    AdminDashboardComponent
   ],
   providers: [
     AuthService,

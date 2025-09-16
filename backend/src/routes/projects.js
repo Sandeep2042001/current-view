@@ -19,6 +19,18 @@ router.get('/', async (req, res) => {
       .where({ user_id: req.user.id })
       .orderBy('created_at', 'desc');
 
+    // Get room count for each project and fix date field names
+    for (let project of projects) {
+      const roomCount = await db('rooms')
+        .where({ project_id: project.id })
+        .count('* as count')
+        .first();
+      
+      project.room_count = parseInt(roomCount.count);
+      project.createdAt = project.created_at;
+      project.updatedAt = project.updated_at;
+    }
+
     res.json(projects);
   } catch (error) {
     logger.error('Error fetching projects:', error);
@@ -54,6 +66,8 @@ router.get('/:id', async (req, res) => {
     }
 
     project.rooms = rooms;
+    project.createdAt = project.created_at;
+    project.updatedAt = project.updated_at;
 
     res.json(project);
   } catch (error) {

@@ -369,7 +369,7 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
 
   private async loadSystemStats() {
     try {
-      this.systemStats = await this.http.get<SystemStats>(`${this.API_URL}/admin/stats`).toPromise();
+      this.systemStats = await this.http.get<SystemStats>(`${this.API_URL}/admin/stats`).toPromise() || null;
     } catch (error) {
       console.error('Error loading system stats:', error);
     }
@@ -377,7 +377,7 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
 
   private async loadSystemHealth() {
     try {
-      this.systemHealth = await this.http.get<SystemHealth>(`${this.API_URL}/admin/health`).toPromise();
+      this.systemHealth = await this.http.get<SystemHealth>(`${this.API_URL}/admin/health`).toPromise() || null;
     } catch (error) {
       console.error('Error loading system health:', error);
     }
@@ -385,7 +385,7 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
 
   private async loadProcessingJobs() {
     try {
-      this.processingJobs = await this.http.get<ProcessingJob[]>(`${this.API_URL}/admin/jobs`).toPromise();
+      this.processingJobs = await this.http.get<ProcessingJob[]>(`${this.API_URL}/admin/jobs`).toPromise() || [];
     } catch (error) {
       console.error('Error loading processing jobs:', error);
     }

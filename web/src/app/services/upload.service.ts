@@ -10,8 +10,13 @@ export class UploadService {
 
   constructor(private http: HttpClient) { }
 
-  getImageUrl(imagePath: string): Observable<{ url: string }> {
-    return this.http.get<{ url: string }>(`${this.API_URL}/upload/image/${imagePath}`);
+  getImageUrl(imageId: string): Observable<{ url: string }> {
+    // Return the direct image data URL (no authentication required)
+    const url = `${this.API_URL}/upload/image-data/${imageId}`;
+    return new Observable(observer => {
+      observer.next({ url });
+      observer.complete();
+    });
   }
 
   uploadImage(roomId: string, file: File, metadata?: any): Observable<any> {
