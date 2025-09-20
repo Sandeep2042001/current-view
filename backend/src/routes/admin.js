@@ -181,7 +181,9 @@ router.get('/health', async (req, res) => {
       health.minio = 'unhealthy';
     }
 
-    const overallHealth = Object.values(health).every(status => status === 'healthy') ? 'healthy' : 'unhealthy';
+    // Calculate overall health excluding timestamp
+    const healthStatuses = [health.database, health.redis, health.minio];
+    const overallHealth = healthStatuses.every(status => status === 'healthy') ? 'healthy' : 'unhealthy';
 
     res.json({
       ...health,

@@ -3,7 +3,7 @@
     <div class="header-content">
       <h1 class="app-title">{{ title }}</h1>
       <div class="user-info" *ngIf="user">
-        <span class="user-name">{{ user.firstName }} {{ user.lastName }}</span>
+        <button *ngIf="!isAdmin()" class="projects-btn" (click)="goToProjects()">My Projects</button>
         <button class="logout-btn" (click)="logout()">Logout</button>
       </div>
     </div>
