@@ -190,17 +190,11 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
             </button>
           </div>
 
-          <div class="info-help">
-            <h4>Need Help?</h4>
-            <div class="help-item">
-              <strong>Annotations:</strong> Click "Add Annotation" to manually mark points of interest
-            </div>
-            <div class="help-item">
-              <strong>Hotspots:</strong> Auto-generated after processing to connect rooms
-            </div>
-            <div class="help-item">
-              <strong>Processing:</strong> Converts your images into a navigable 360° experience
-            </div>
+          <div class="info-actions" *ngIf="currentRoom?.status === 'completed'">
+            <button (click)="generateHotspots()" class="action-btn secondary">
+              <i class="material-icons">place</i>
+              Generate Hotspots
+            </button>
           </div>
         </div>
       </div>
@@ -381,11 +375,12 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loadingMessage = 'Loading 360° image...';
 
       if (this.currentRoom.metadata?.['stitched_image_path']) {
-        // Get presigned URL for the stitched image
-        const imageUrl = await this.uploadService.getImageUrl(this.currentRoom.metadata['stitched_image_path']).toPromise();
+        // Use direct MinIO path for stitched image
+        const stitchedImagePath = this.currentRoom.metadata['stitched_image_path'];
+        const directUrl = `http://localhost:3000/api/upload/stitched-image/${encodeURIComponent(stitchedImagePath)}`;
         
         // Load texture
-        const texture = await this.loadTexture(imageUrl?.url || '');
+        const texture = await this.loadTexture(directUrl);
         
         // Create sphere geometry for 360° viewing
         const geometry = new THREE.SphereGeometry(100, 60, 40);
@@ -1048,8 +1043,19 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private pollProcessingStatus(jobId: string) {
+    // Don't start polling if room is already completed
+    if (this.currentRoom.status === 'completed') {
+      return;
+    }
+
     const pollInterval = setInterval(async () => {
       try {
+        // Stop polling if room is already completed
+        if (this.currentRoom.status === 'completed') {
+          clearInterval(pollInterval);
+          return;
+        }
+
         const status = await this.processingService.getJobStatus(jobId).toPromise();
         
         if (status.status === 'completed') {
@@ -1067,11 +1073,43 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         console.error('Error polling job status:', error);
         clearInterval(pollInterval);
       }
-    }, 5000); // Poll every 5 seconds
+    }, 10000); // Poll every 10 seconds (reduced frequency)
     
     // Stop polling after 10 minutes
     setTimeout(() => {
       clearInterval(pollInterval);
     }, 600000);
+  }
+
+  async generateHotspots() {
+    if (!this.currentRoom) return;
+    
+    try {
+      this.loading = true;
+      this.loadingMessage = 'Generating hotspots...';
+      
+      const result = await this.processingService.startHotspotGeneration(this.currentRoom.id).toPromise();
+      
+      if (result) {
+        this.toastr.success('Hotspot generation started!');
+        
+        // Poll for completion
+        setTimeout(async () => {
+          try {
+            await this.refreshCurrentRoom();
+            await this.loadRoomData();
+            this.toastr.success('Hotspots generated successfully!');
+          } catch (error) {
+            console.error('Error refreshing after hotspot generation:', error);
+          }
+        }, 5000);
+      }
+    } catch (error: any) {
+      const errorMessage = error?.error?.error || 'Failed to generate hotspots';
+      this.toastr.error(errorMessage);
+      console.error('Hotspot generation error:', error);
+    } finally {
+      this.loading = false;
+    }
   }
 }

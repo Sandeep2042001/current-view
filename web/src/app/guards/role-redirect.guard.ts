@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { CanActivate, Router } from '@angular/router';
 import { Observable, of } from 'rxjs';
-import { map, take } from 'rxjs/operators';
+import { map, take, filter, switchMap } from 'rxjs/operators';
 import { AuthService } from '../services/auth.service';
 
 @Injectable({
@@ -14,11 +14,21 @@ export class RoleRedirectGuard implements CanActivate {
   ) {}
 
   canActivate(): Observable<boolean> {
-    return this.authService.currentUser$.pipe(
+    const token = localStorage.getItem('auth_token');
+    
+    if (!token) {
+      this.router.navigate(['/login']);
+      return of(false);
+    }
+
+    // Wait for auth initialization to complete before making decisions
+    return this.authService.authInitialized$.pipe(
+      filter(initialized => initialized),
+      take(1),
+      switchMap(() => this.authService.currentUser$),
       take(1),
       map(user => {
         if (!user) {
-          // Not authenticated, redirect to login
           this.router.navigate(['/login']);
           return false;
         }

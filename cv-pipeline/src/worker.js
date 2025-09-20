@@ -62,6 +62,8 @@ class CVWorker {
     
     try {
       logger.info(`Processing job: ${job.jobId} (${job.type})`);
+      console.log(`🚀 STARTING JOB: ${job.jobId} (${job.type})`);
+      console.log(`📋 Job data:`, JSON.stringify(job.data, null, 2));
 
       // Update job status to processing
       await db('processing_jobs')
@@ -70,6 +72,8 @@ class CVWorker {
           status: 'processing',
           started_at: new Date()
         });
+      
+      console.log(`📊 Job ${job.jobId} status updated to 'processing'`);
 
       let result;
 
@@ -98,9 +102,11 @@ class CVWorker {
         });
 
       logger.info(`Job completed: ${job.jobId}`);
+      console.log(`🎉 JOB COMPLETED: ${job.jobId} - Result:`, JSON.stringify(result, null, 2));
 
     } catch (error) {
       logger.error(`Job failed: ${job.jobId}`, error);
+      console.error(`❌ JOB FAILED: ${job.jobId} - Error: ${error.message}`);
 
       // Update job as failed
       await db('processing_jobs')

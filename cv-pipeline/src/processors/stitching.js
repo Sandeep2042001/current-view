@@ -55,7 +55,7 @@ async function processStitchingJob(job) {
       }
     );
 
-    // Update room status
+    // Update room status with metadata
     await db('rooms')
       .where({ id: room_id })
       .update({
@@ -79,15 +79,40 @@ async function processStitchingJob(job) {
       });
 
     logger.info(`Stitching completed for room ${room_id}`);
+    console.log(`✅ STITCHING SUCCESS: Room ${room_id} - Quality: ${stitchedResult.quality}%`);
+
+    // Auto-trigger hotspot generation after successful stitching
+    try {
+      console.log(`🎯 AUTO-TRIGGERING HOTSPOT GENERATION for room ${room_id}`);
+      const { processHotspotGenerationJob } = require('./hotspots');
+      
+      const hotspotJob = {
+        jobId: `hotspot-${room_id}-${Date.now()}`,
+        type: 'hotspot_generation',
+        data: { room_id: room_id }
+      };
+      
+      const hotspotResult = await processHotspotGenerationJob(hotspotJob);
+      console.log(`✅ HOTSPOTS GENERATED: ${hotspotResult.total_hotspots} hotspots created`);
+      
+    } catch (hotspotError) {
+      console.error(`⚠️ Hotspot generation failed for room ${room_id}:`, hotspotError.message);
+      // Don't fail the stitching job if hotspot generation fails
+    }
 
     return {
       stitched_image_path: stitchedPath,
+      stitched_image_size: stitchedResult.buffer.length,
+      stitching_quality: stitchedResult.quality,
       quality: stitchedResult.quality,
-      processed_images: image_ids.length
+      processed_images: image_ids.length,
+      rejected_images: stitchedResult.rejectedImages || 0,
+      quality_metrics: stitchedResult.qualityMetrics || {}
     };
 
   } catch (error) {
     logger.error(`Stitching failed for room ${room_id}:`, error);
+    console.error(`❌ STITCHING FAILED: Room ${room_id} - ${error.message}`);
     
     // Update room status to failed
     await db('rooms')

@@ -35,12 +35,6 @@ import { Project, Room } from '../../models/user.model';
               <i class="material-icons">build</i>
               Start Processing
             </button>
-            <button (click)="viewIn3D()" 
-                    [disabled]="!has3DModel" 
-                    class="action-btn secondary">
-              <i class="material-icons">view_in_ar</i>
-              View 3D Model
-            </button>
             <button (click)="exportProject()" class="action-btn secondary">
               <i class="material-icons">download</i>
               Export
@@ -160,39 +154,6 @@ import { Project, Room } from '../../models/user.model';
         </ng-template>
       </div>
 
-      <!-- 3D Model Section -->
-      <div class="model-section" *ngIf="has3DModel">
-        <h2>3D Model</h2>
-        <div class="model-info">
-          <div class="model-preview">
-            <div class="preview-placeholder">
-              <i class="material-icons">view_in_ar</i>
-              <p>3D Model Available</p>
-            </div>
-          </div>
-          <div class="model-details">
-            <h3>Reconstruction Details</h3>
-            <div class="model-stats">
-              <div class="stat">
-                <span class="label">Vertices:</span>
-                <span class="value">{{ project?.metadata?.['model_vertices'] || 0 }}</span>
-              </div>
-              <div class="stat">
-                <span class="label">Faces:</span>
-                <span class="value">{{ project?.metadata?.['model_faces'] || 0 }}</span>
-              </div>
-              <div class="stat">
-                <span class="label">Quality:</span>
-                <span class="value">{{ (project?.metadata?.['reconstruction_quality']?.overall || 0) * 100 | number:'1.0-0' }}%</span>
-              </div>
-            </div>
-            <button (click)="viewIn3D()" class="view-model-btn">
-              <i class="material-icons">view_in_ar</i>
-              View 3D Model
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   `,
   styleUrls: ['./project-detail.component.scss']
@@ -242,13 +203,17 @@ export class ProjectDetailComponent implements OnInit {
   }
 
   get canStartProcessing(): boolean {
-    return this.rooms.some(room => room.status === 'completed') && 
-           this.processingJobs.every(job => job.status !== 'processing');
+    // Can start processing if:
+    // 1. At least one room has images and is pending
+    // 2. No jobs are currently processing
+    const hasRoomsReadyForProcessing = this.rooms.some(room => 
+      room.status === 'pending' && room.images && room.images.length > 0
+    );
+    const noJobsProcessing = this.processingJobs.every(job => job.status !== 'processing');
+    
+    return hasRoomsReadyForProcessing && noJobsProcessing;
   }
 
-  get has3DModel(): boolean {
-    return this.project?.metadata?.['has_3d_model'] === true;
-  }
 
   async startProcessing() {
     try {
@@ -307,10 +272,6 @@ export class ProjectDetailComponent implements OnInit {
     }
   }
 
-  viewIn3D() {
-    // TODO: Implement 3D model viewer
-    this.toastr.info('3D model viewer coming soon!');
-  }
 
   exportProject() {
     if (!this.project) return;
