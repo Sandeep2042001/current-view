@@ -1,7 +1,6 @@
 import { Injectable } from '@angular/core';
 import { CanActivate, Router } from '@angular/router';
-import { Observable } from 'rxjs';
-import { map, take } from 'rxjs/operators';
+import { Observable, of } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 
 @Injectable({
@@ -14,16 +13,15 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   canActivate(): Observable<boolean> {
-    return this.authService.isAuthenticated$.pipe(
-      take(1),
-      map(isAuthenticated => {
-        if (isAuthenticated) {
-          return true;
-        } else {
-          this.router.navigate(['/login']);
-          return false;
-        }
-      })
-    );
+    const token = localStorage.getItem('auth_token');
+    
+    if (!token) {
+      this.router.navigate(['/login']);
+      return of(false);
+    }
+
+    // If token exists, allow access immediately
+    // Auth service will handle verification in background
+    return of(true);
   }
 }

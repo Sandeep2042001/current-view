@@ -27,6 +27,7 @@ import { ProcessingService } from './services/processing.service';
 // Guards
 import { AuthGuard } from './guards/auth.guard';
 import { AdminGuard } from './guards/admin.guard';
+import { RoleRedirectGuard } from './guards/role-redirect.guard';
 
 // Interceptors
 import { AuthInterceptor } from './interceptors/auth.interceptor';
@@ -66,6 +67,7 @@ import { AppRoutes } from './app.routes';
     ProcessingService,
     AuthGuard,
     AdminGuard,
+    RoleRedirectGuard,
     {
       provide: HTTP_INTERCEPTORS,
       useClass: AuthInterceptor,

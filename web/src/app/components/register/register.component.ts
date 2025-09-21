@@ -144,9 +144,15 @@ export class RegisterComponent {
       const { firstName, lastName, email, password } = this.registerForm.value;
 
       this.authService.register(email, password, firstName, lastName).subscribe({
-        next: () => {
+        next: (response) => {
           this.toastr.success('Account created successfully!');
-          this.router.navigate(['/projects']);
+          
+          // Redirect based on user role (though new users will be 'user' by default)
+          if (response.user.role === 'admin' || response.user.role === 'super_admin') {
+            this.router.navigate(['/admin']);
+          } else {
+            this.router.navigate(['/projects']);
+          }
         },
         error: (error) => {
           this.toastr.error(error.error?.error || 'Registration failed');

@@ -7,6 +7,7 @@ exports.up = function(knex) {
     table.json('position').nullable(); // 3D position in the tour
     table.json('rotation').nullable(); // 3D rotation
     table.string('status').defaultTo('pending'); // pending, processing, completed, failed
+    table.json('metadata').nullable(); // Stitching results and other metadata
     table.timestamps(true, true);
     
     table.index(['project_id']);
