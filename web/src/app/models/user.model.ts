@@ -88,7 +88,7 @@ export interface Hotspot {
   data?: Record<string, any>;
   is_auto_generated: boolean;
   created_at: string;
-  screenPosition?: { x: number; y: number };
+  screenPosition?: { x: number; y: number; visible?: boolean };
   showTooltip?: boolean;
 }
 
@@ -105,7 +105,7 @@ export interface Annotation {
   description?: string;
   style?: Record<string, any>;
   created_at: string;
-  screenPosition?: { x: number; y: number };
+  screenPosition?: { x: number; y: number; visible?: boolean };
 }
 
 export interface Measurement {
@@ -122,5 +122,5 @@ export interface Measurement {
   label?: string;
   metadata?: Record<string, any>;
   created_at: string;
-  screenPosition?: { x: number; y: number };
+  screenPosition?: { x: number; y: number; visible?: boolean };
 }

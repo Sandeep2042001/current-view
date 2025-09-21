@@ -72,6 +72,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
              class="hotspot" 
               [style.left.px]="hotspot.screenPosition?.x || 0"
               [style.top.px]="hotspot.screenPosition?.y || 0"
+              [style.display]="hotspot.screenPosition?.visible !== false ? 'block' : 'none'"
              [class]="'hotspot-' + hotspot.type"
              (click)="onHotspotClick(hotspot)">
           <div class="hotspot-icon">
@@ -88,7 +89,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
           <div *ngFor="let annotation of annotations" 
                class="annotation"
                 [style.left.px]="annotation.screenPosition?.x || 0"
-                [style.top.px]="annotation.screenPosition?.y || 0">
+                [style.top.px]="annotation.screenPosition?.y || 0"
+                [style.display]="annotation.screenPosition?.visible !== false ? 'block' : 'none'">
             <div class="annotation-marker" [class]="'annotation-' + annotation.type">
               <i class="material-icons">{{ getAnnotationIcon(annotation.type) }}</i>
             </div>
@@ -104,7 +106,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
           <div *ngFor="let measurement of measurements" 
                class="measurement"
                 [style.left.px]="measurement.screenPosition?.x || 0"
-                [style.top.px]="measurement.screenPosition?.y || 0">
+                [style.top.px]="measurement.screenPosition?.y || 0"
+                [style.display]="measurement.screenPosition?.visible !== false ? 'block' : 'none'">
             <div class="measurement-line"></div>
             <div class="measurement-label">
               {{ formatDistance(measurement.distance) }} {{ measurement.unit }}
@@ -234,6 +237,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   private controls!: OrbitControls;
   private sphere!: THREE.Mesh;
   private animationId!: number;
+  private lastPositionUpdate = 0;
 
   // Component state
   projectId!: string;
@@ -335,15 +339,15 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
 
       // Load hotspots
       this.hotspots = this.currentRoom.hotspots || [];
-      this.calculateHotspotScreenPositions();
+      this.updateHotspotPositions();
 
       // Load annotations
       this.annotations = await this.loadAnnotations();
-      this.calculateAnnotationScreenPositions();
+      this.updateAnnotationPositions();
 
       // Load measurements
       this.measurements = await this.loadMeasurements();
-      this.calculateMeasurementScreenPositions();
+      this.updateMeasurementPositions();
 
       // Load 360° image
       await this.load360Image();
@@ -521,6 +525,15 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         }
         if (this.renderer && this.scene && this.camera) {
           this.renderer.render(this.scene, this.camera);
+          
+          // Update hotspot positions to move with camera (throttled for performance)
+          const now = Date.now();
+          if (now - this.lastPositionUpdate > 16) { // Update at ~60fps max
+            this.updateHotspotPositions();
+            this.updateAnnotationPositions();
+            this.updateMeasurementPositions();
+            this.lastPositionUpdate = now;
+          }
         }
       } catch (error) {
         console.error('Render loop error:', error);
@@ -553,14 +566,18 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     this.renderer.setSize(width, height);
   }
 
-  private calculateHotspotScreenPositions() {
+  private updateHotspotPositions() {
+    if (!this.camera || !this.viewerContainer) return;
+    
     this.hotspots.forEach(hotspot => {
       const screenPos = this.worldToScreen(hotspot.position);
       hotspot.screenPosition = screenPos;
     });
   }
 
-  private calculateAnnotationScreenPositions() {
+  private updateAnnotationPositions() {
+    if (!this.camera || !this.viewerContainer) return;
+    
     this.annotations.forEach(annotation => {
       if (annotation.coordinates.length > 0) {
         const screenPos = this.worldToScreen(annotation.coordinates[0]);
@@ -569,7 +586,9 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  private calculateMeasurementScreenPositions() {
+  private updateMeasurementPositions() {
+    if (!this.camera || !this.viewerContainer) return;
+    
     this.measurements.forEach(measurement => {
       if (measurement.points.length > 0) {
         const screenPos = this.worldToScreen(measurement.points[0]);
@@ -579,13 +598,32 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private worldToScreen(worldPosition: { x: number; y: number; z: number }) {
-    const vector = new THREE.Vector3(worldPosition.x, worldPosition.y, worldPosition.z);
+    // Scale normalized coordinates (-1 to 1) to sphere radius (100)
+    // The sphere geometry has radius 100, so we need to scale the hotspot coordinates
+    const sphereRadius = 100;
+    const vector = new THREE.Vector3(
+      worldPosition.x * sphereRadius,
+      worldPosition.y * sphereRadius,
+      worldPosition.z * sphereRadius
+    );
+    
+    // Normalize to place on sphere surface
+    vector.normalize().multiplyScalar(sphereRadius);
+    
+    // Project to screen coordinates
     vector.project(this.camera);
 
+    // Check if the point is behind the camera (z > 1 means behind)
+    const isVisible = vector.z < 1;
+    
     const x = (vector.x * 0.5 + 0.5) * this.viewerContainer.nativeElement.clientWidth;
     const y = (vector.y * -0.5 + 0.5) * this.viewerContainer.nativeElement.clientHeight;
 
-    return { x, y };
+    return { 
+      x: isVisible ? x : -1000, // Hide hotspots behind camera
+      y: isVisible ? y : -1000,
+      visible: isVisible
+    };
   }
 
   private async loadAnnotations(): Promise<Annotation[]> {
@@ -834,7 +872,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         if (annotation) {
           this.annotations.push(annotation);
         }
-        this.calculateAnnotationScreenPositions();
+        this.updateAnnotationPositions();
         this.toastr.success('Annotation added successfully');
         
         this.disableAnnotationMode();
@@ -892,7 +930,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       if (measurement) {
         this.measurements.push(measurement);
       }
-      this.calculateMeasurementScreenPositions();
+      this.updateMeasurementPositions();
       this.toastr.success('Measurement created successfully');
       
       this.disableMeasurementMode();
