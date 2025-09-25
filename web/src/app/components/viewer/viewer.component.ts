@@ -141,7 +141,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
                 <span>Room connections mapping</span>
               </div>
             </div>
-          </div>
+        </div>
         </div>
       </div>
 
@@ -182,7 +182,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
               <div class="status-details">
                 <span class="status-label">{{ getStatusLabel(currentRoom?.status || 'pending') }}</span>
                 <span class="status-description">{{ getStatusDescription(currentRoom?.status || 'pending') }}</span>
-              </div>
+            </div>
             </div>
           </div>
 
@@ -521,10 +521,10 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       
       try {
         if (this.controls) {
-          this.controls.update();
+      this.controls.update();
         }
         if (this.renderer && this.scene && this.camera) {
-          this.renderer.render(this.scene, this.camera);
+      this.renderer.render(this.scene, this.camera);
           
           // Update hotspot positions to move with camera (throttled for performance)
           const now = Date.now();
@@ -615,7 +615,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
 
     // Check if the point is behind the camera (z > 1 means behind)
     const isVisible = vector.z < 1;
-    
+
     const x = (vector.x * 0.5 + 0.5) * this.viewerContainer.nativeElement.clientWidth;
     const y = (vector.y * -0.5 + 0.5) * this.viewerContainer.nativeElement.clientHeight;
 
@@ -659,7 +659,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       });
     } catch (error) {
       console.error('Error loading measurements:', error);
-      return [];
+    return [];
     }
   }
 
