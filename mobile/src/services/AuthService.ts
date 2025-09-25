@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { User } from '../types/User';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+// For local testing with your computer's IP address
+const API_BASE_URL = 'http://172.25.96.1:3000/api';
 
 export class AuthService {
   static async login(email: string, password: string): Promise<{ user: User; token: string }> {

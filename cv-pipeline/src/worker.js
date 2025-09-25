@@ -80,6 +80,7 @@ class CVWorker {
       // Process based on job type
       switch (job.type) {
         case 'stitching':
+          // Use basic stitching (will upgrade to OpenCV later)
           result = await processStitchingJob(job);
           break;
         case '3d_reconstruction':

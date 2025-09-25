@@ -74,7 +74,7 @@ services:
   cv-worker:
     build:
       context: ./cv-pipeline
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.fast
     environment:
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio
@@ -83,6 +83,11 @@ services:
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET=interactive360
       - NODE_ENV=development
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=interactive360
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
     depends_on:
       - redis
       - minio
