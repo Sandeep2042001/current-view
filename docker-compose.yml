@@ -49,11 +49,11 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=interactive360
+      - DB_HOST=turntable.proxy.rlwy.net
+      - DB_PORT=21278
+      - DB_NAME=railway
       - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      - DB_PASSWORD=DdXUammdgUszdXOXAapcJHnFJTqmflyq
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
@@ -76,18 +76,18 @@ services:
       context: ./cv-pipeline
       dockerfile: Dockerfile.fast
     environment:
+      - NODE_ENV=development
+      - DB_HOST=turntable.proxy.rlwy.net
+      - DB_PORT=21278
+      - DB_NAME=railway
+      - DB_USER=postgres
+      - DB_PASSWORD=DdXUammdgUszdXOXAapcJHnFJTqmflyq
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET=interactive360
-      - NODE_ENV=development
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=interactive360
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
     depends_on:
       - redis
       - minio
