@@ -171,6 +171,67 @@ router.post('/hotspots/:roomId', async (req, res) => {
   }
 });
 
+// Start building-level stitching process
+router.post('/building-stitch/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    // Verify project exists and belongs to user
+    const project = await db('projects')
+      .where({ id: projectId, user_id: req.user.id })
+      .first();
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Check if all rooms are completed
+    const rooms = await db('rooms')
+      .where({ 
+        project_id: projectId,
+        status: 'completed' 
+      });
+
+    if (rooms.length < 1) {
+      return res.status(400).json({ 
+        error: 'At least 1 completed room required for building stitching' 
+      });
+    }
+
+    // Create building stitching job
+    const [job] = await db('processing_jobs')
+      .insert({
+        project_id: projectId,
+        type: 'building_stitching',
+        input_data: {
+          project_id: projectId
+        },
+        status: 'pending'
+      })
+      .returning('*');
+
+    // Queue job for processing
+    const redisClient = getRedisClient();
+    await redisClient.lPush('cv-processing-queue', JSON.stringify({
+      jobId: job.id,
+      type: 'building_stitching',
+      data: job.input_data
+    }));
+
+    logger.info(`Building stitching job queued for project ${projectId}`);
+
+    res.json({
+      success: true,
+      jobId: job.id,
+      message: `Building stitching started for ${rooms.length} rooms`
+    });
+
+  } catch (error) {
+    logger.error('Error starting building stitching:', error);
+    res.status(500).json({ error: 'Failed to start building stitching' });
+  }
+});
+
 // Get job status
 router.get('/job/:jobId', async (req, res) => {
   try {

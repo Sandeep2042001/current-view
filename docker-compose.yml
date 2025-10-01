@@ -70,7 +70,7 @@ services:
     networks:
       - app-network
 
-  # CV Processing Worker
+  # CV Processing Worker with OpenCV Support
   cv-worker:
     build:
       context: ./cv-pipeline
@@ -95,6 +95,7 @@ services:
     volumes:
       - ./cv-pipeline:/app
       - /app/node_modules
+      - cv-temp:/app/temp
     networks:
       - app-network
     restart: unless-stopped
@@ -117,6 +118,7 @@ volumes:
   postgres_data:
   minio_data:
   redis_data:
+  cv-temp:
 
 networks:
   app-network:
