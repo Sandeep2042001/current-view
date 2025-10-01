@@ -1,11 +1,7 @@
 exports.up = function(knex) {
-  return knex.schema.alterTable('rooms', function(table) {
-    table.json('metadata').nullable(); // Store stitching results and other metadata
-  });
+  return Promise.resolve(); // Migration already applied in 003_create_rooms_table.js
 };
 
 exports.down = function(knex) {
-  return knex.schema.alterTable('rooms', function(table) {
-    table.dropColumn('metadata');
-  });
+  return Promise.resolve(); // No need to rollback
 };
