@@ -63,6 +63,46 @@
   backdrop-filter: blur(10px);
 }
 
+.building-navigation {
+  background: rgba(0, 0, 0, 0.7);
+  padding: 8px 12px;
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+}
+
+.building-btn {
+  background: rgba(40, 167, 69, 0.8);
+  border: none;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(40, 167, 69, 1);
+    transform: scale(1.05);
+  }
+
+  &.active {
+    background: rgba(255, 193, 7, 0.8);
+    color: #000;
+
+    &:hover {
+      background: rgba(255, 193, 7, 1);
+    }
+  }
+
+  i {
+    font-size: 18px;
+  }
+}
+
 .room-selector {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.3);

@@ -47,6 +47,14 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
             <option *ngFor="let room of rooms" [value]="room.id">{{ room.name }}</option>
           </select>
         </div>
+        
+        <div class="building-navigation" *ngIf="project?.metadata?.['building_panorama_path']">
+          <button (click)="toggleBuildingView()" class="building-btn" 
+                  [class.active]="isBuildingView" title="Toggle Building View">
+            <i class="material-icons">{{ isBuildingView ? 'room' : 'business' }}</i>
+            {{ isBuildingView ? 'Room View' : 'Building View' }}
+          </button>
+        </div>
       </div>
 
       <!-- Hidden File Input -->
@@ -248,6 +256,10 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   hotspots: Hotspot[] = [];
   annotations: Annotation[] = [];
   measurements: Measurement[] = [];
+  
+  // Building-level navigation
+  isBuildingView = false;
+  buildingHotspots: Hotspot[] = [];
 
   // UI state
   loading = false;
@@ -683,6 +695,133 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   switchToRoom(roomId: string) {
     this.currentRoomId = roomId;
     this.switchRoom();
+  }
+
+  // Building-level navigation methods
+  async toggleBuildingView() {
+    if (this.isBuildingView) {
+      // Switch back to room view
+      this.isBuildingView = false;
+      await this.loadRoomData();
+      this.toastr.info('Switched to room view');
+    } else {
+      // Switch to building view
+      this.isBuildingView = true;
+      await this.loadBuildingData();
+      this.toastr.info('Switched to building view');
+    }
+  }
+
+  private async loadBuildingData() {
+    try {
+      this.loadingMessage = 'Loading building view...';
+      
+      // Load building panorama
+      await this.loadBuildingPanorama();
+      
+      // Load building-level hotspots
+      this.buildingHotspots = await this.loadBuildingHotspots();
+      this.hotspots = this.buildingHotspots; // Use building hotspots for display
+      this.updateHotspotPositions();
+      
+    } catch (error) {
+      this.toastr.error('Failed to load building view');
+      console.error('Error loading building data:', error);
+    }
+  }
+
+  private async loadBuildingPanorama() {
+    try {
+      if (!this.project?.metadata?.['building_panorama_path']) {
+        throw new Error('No building panorama available');
+      }
+
+      const buildingImagePath = this.project.metadata['building_panorama_path'];
+      const directUrl = `http://localhost:3000/api/upload/stitched-image/${encodeURIComponent(buildingImagePath)}`;
+      
+      // Load texture
+      const texture = await this.loadTexture(directUrl);
+      
+      // Create sphere geometry for 360° viewing
+      const geometry = new THREE.SphereGeometry(100, 60, 40);
+      geometry.scale(-1, 1, 1); // Invert the sphere (inside-out)
+
+      // Create material with texture
+      const material = new THREE.MeshBasicMaterial({ 
+        map: texture,
+        side: THREE.DoubleSide // Render both sides
+      });
+      
+      // Remove existing sphere and add building panorama
+      if (this.sphere) {
+        this.scene.remove(this.sphere);
+      }
+      
+      this.sphere = new THREE.Mesh(geometry, material);
+      this.scene.add(this.sphere);
+
+      this.startRenderLoop();
+      this.toastr.success('Building panorama loaded successfully!');
+      
+    } catch (error) {
+      this.toastr.error('Failed to load building panorama');
+      console.error('Error loading building panorama:', error);
+    }
+  }
+
+  private async loadBuildingHotspots(): Promise<Hotspot[]> {
+    try {
+      // Create building hotspots from room data
+      const buildingHotspots: Hotspot[] = [];
+      
+      // Create navigation hotspots between rooms
+      this.rooms.forEach((room, index) => {
+        this.rooms.forEach((targetRoom, targetIndex) => {
+          if (index === targetIndex) return;
+          
+          const position = this.calculateBuildingHotspotPosition(index, targetIndex, this.rooms.length);
+          
+          buildingHotspots.push({
+            id: `building-nav-${room.id}-${targetRoom.id}`,
+            room_id: room.id,
+            target_room_id: targetRoom.id,
+            type: 'navigation',
+            position: position,
+            title: `Go to ${targetRoom.name}`,
+            description: `Navigate to ${targetRoom.name}`,
+            is_auto_generated: true,
+            data: {
+              transition_type: 'smooth',
+              animation_duration: 1500,
+              building_level: true,
+              source_room: room.name,
+              target_room: targetRoom.name
+            },
+            created_at: new Date().toISOString()
+          });
+        });
+      });
+
+      return buildingHotspots;
+    } catch (error) {
+      console.error('Error loading building hotspots:', error);
+      return [];
+    }
+  }
+
+  private calculateBuildingHotspotPosition(sourceIndex: number, targetIndex: number, totalRooms: number): { x: number; y: number; z: number } {
+    // Calculate angle based on room positions
+    const sourceAngle = (sourceIndex / totalRooms) * 2 * Math.PI;
+    const targetAngle = (targetIndex / totalRooms) * 2 * Math.PI;
+    
+    // Position hotspot between source and target
+    const angle = (sourceAngle + targetAngle) / 2;
+    
+    return {
+      x: Math.cos(angle) * 0.7,
+      y: 0.1,
+      z: Math.sin(angle) * 0.7
+    };
   }
 
   // Control Methods

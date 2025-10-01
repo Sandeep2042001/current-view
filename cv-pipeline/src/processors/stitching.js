@@ -8,14 +8,21 @@ async function processStitchingJob(job) {
   
   try {
     logger.info(`Starting stitching for room ${room_id} with ${image_ids.length} images`);
+    logger.info(`Looking for images with IDs: ${JSON.stringify(image_ids)}`);
 
     // Get images from database
     const images = await db('images')
       .whereIn('id', image_ids)
       .orderBy('created_at', 'asc');
 
+    logger.info(`Found ${images.length} images in database`);
+    logger.info(`Image details: ${JSON.stringify(images.map(img => ({ id: img.id, filename: img.filename, room_id: img.room_id })))}`);
+
     if (images.length < 2) {
-      throw new Error('At least 2 images required for stitching');
+      logger.error(`Insufficient images found: ${images.length} (expected at least 2)`);
+      logger.error(`Requested image IDs: ${JSON.stringify(image_ids)}`);
+      logger.error(`Found image IDs: ${JSON.stringify(images.map(img => img.id))}`);
+      throw new Error(`At least 2 images required for stitching. Found ${images.length} images.`);
     }
 
     // Download images from MinIO
@@ -23,25 +30,38 @@ async function processStitchingJob(job) {
     const imageBuffers = [];
     
     for (const image of images) {
-      const stream = await minioClient.getObject(
-        process.env.MINIO_BUCKET || 'interactive360',
-        image.storage_path
-      );
-      
-      const chunks = [];
-      for await (const chunk of stream) {
-        chunks.push(chunk);
+      try {
+        logger.info(`Downloading image: ${image.filename} from path: ${image.storage_path}`);
+        
+        const stream = await minioClient.getObject(
+          process.env.MINIO_BUCKET || 'interactive360',
+          image.storage_path
+        );
+        
+        const chunks = [];
+        for await (const chunk of stream) {
+          chunks.push(chunk);
+        }
+        
+        const buffer = Buffer.concat(chunks);
+        logger.info(`Downloaded image ${image.filename}: ${buffer.length} bytes`);
+        
+        imageBuffers.push({
+          id: image.id,
+          buffer: buffer,
+          metadata: image.metadata,
+          filename: image.filename
+        });
+      } catch (minioError) {
+        logger.error(`Failed to download image ${image.filename}:`, minioError);
+        throw new Error(`Failed to download image ${image.filename}: ${minioError.message}`);
       }
-      
-      imageBuffers.push({
-        id: image.id,
-        buffer: Buffer.concat(chunks),
-        metadata: image.metadata
-      });
     }
 
     // Perform image stitching
+    logger.info(`Starting image stitching with ${imageBuffers.length} images`);
     const stitchedResult = await stitchImages(imageBuffers);
+    logger.info(`Stitching completed. Quality: ${stitchedResult.quality}%, Processed: ${stitchedResult.processedImages}, Rejected: ${stitchedResult.rejectedImages}`);
 
     // Upload stitched image to MinIO
     const stitchedPath = `projects/${images[0].room_id}/stitched/panorama_${Date.now()}.jpg`;
@@ -187,17 +207,23 @@ async function stitchImages(imageBuffers) {
     let stitchedBuffer;
     
     if (acceptableImages.length === 1) {
-      // Single image - just return it
+      // Single image - just return it with high quality
+      logger.info('Only one acceptable image found, returning as-is');
       stitchedBuffer = await sharp(acceptableImages[0].buffer)
         .jpeg({ quality: 95 })
         .toBuffer();
     } else {
-      // Multiple images - create composite
-      const compositeImages = acceptableImages.map((img, index) => ({
-        input: img.buffer,
-        left: index * firstImageInfo.width,
-        top: 0
-      }));
+      // Multiple images - create composite with better alignment
+      logger.info(`Creating panorama with ${acceptableImages.length} images`);
+      
+      const compositeImages = acceptableImages.map((img, index) => {
+        logger.info(`Adding image ${index + 1}: ${img.filename || img.id}`);
+        return {
+          input: img.buffer,
+          left: index * firstImageInfo.width,
+          top: 0
+        };
+      });
 
       stitchedBuffer = await sharp({
         create: {
@@ -210,6 +236,8 @@ async function stitchImages(imageBuffers) {
       .composite(compositeImages)
       .jpeg({ quality: 95 })
       .toBuffer();
+      
+      logger.info(`Panorama created: ${panoramaWidth}x${panoramaHeight} pixels`);
     }
 
     // Calculate final quality score based on multiple factors
