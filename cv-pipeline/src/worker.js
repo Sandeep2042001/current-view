@@ -4,16 +4,18 @@ const { getMinioClient } = require('./config/minio');
 const logger = require('./utils/logger');
 const { processStitchingJob } = require('./processors/stitching');
 
-// Try to load OpenCV processor, but don't fail if it's not available
-let PythonOpenCVStitchingProcessor = null;
+// Advanced panorama generator is now integrated directly in stitching.js
+
+// Try to load 3D reconstruction processor
+let ThreeDReconstructionProcessor = null;
 try {
-  const opencvModule = require('./processors/python_opencv_stitching');
-  PythonOpenCVStitchingProcessor = opencvModule.PythonOpenCVStitchingProcessor;
-  console.log('✅ OpenCV stitching processor loaded successfully');
+  const reconstructionModule = require('./processors/3d_reconstruction_processor');
+  ThreeDReconstructionProcessor = reconstructionModule.ThreeDReconstructionProcessor;
+  console.log('✅ 3D reconstruction processor loaded successfully');
 } catch (error) {
-  console.log('⚠️ OpenCV stitching processor not available:', error.message);
-  console.log('📝 Will use basic stitching as fallback');
+  console.log('⚠️ 3D reconstruction processor not available:', error.message);
 }
+
 const { process3DReconstructionJob } = require('./processors/reconstruction');
 const { processHotspotGenerationJob } = require('./processors/hotspots');
 const { processBuildingStitchingJob } = require('./processors/building_stitching');
@@ -22,7 +24,7 @@ class CVWorker {
   constructor() {
     this.redisClient = null;
     this.isProcessing = false;
-    this.opencvProcessor = PythonOpenCVStitchingProcessor ? new PythonOpenCVStitchingProcessor() : null;
+    this.reconstructionProcessor = ThreeDReconstructionProcessor ? new ThreeDReconstructionProcessor() : null;
   }
 
   async connect() {
@@ -93,25 +95,25 @@ class CVWorker {
       // Process based on job type
       switch (job.type) {
         case 'stitching':
-          // Try OpenCV stitching first if available, fallback to basic stitching
-          if (this.opencvProcessor) {
-            try {
-              console.log('🎯 Attempting OpenCV stitching...');
-              result = await this.opencvProcessor.processStitchingJob(job);
-              console.log('✅ OpenCV stitching completed successfully');
-            } catch (opencvError) {
-              console.log('⚠️ OpenCV stitching failed, falling back to basic stitching:', opencvError.message);
-              result = await processStitchingJob(job);
-              console.log('✅ Basic stitching completed as fallback');
-            }
-          } else {
-            console.log('📝 Using basic stitching (OpenCV not available)');
-            result = await processStitchingJob(job);
-            console.log('✅ Basic stitching completed');
-          }
+          console.log('🎯 Starting advanced panorama generation...');
+          result = await processStitchingJob(job);
+          console.log('✅ Advanced panorama generation completed successfully');
           break;
         case '3d_reconstruction':
-          result = await process3DReconstructionJob(job);
+          if (this.reconstructionProcessor) {
+            try {
+              console.log('🏗️ Starting 3D reconstruction...');
+              result = await this.reconstructionProcessor.processReconstruction(job);
+              console.log('✅ 3D reconstruction completed successfully');
+            } catch (reconstructionError) {
+              console.log('⚠️ 3D reconstruction failed:', reconstructionError.message);
+              result = await process3DReconstructionJob(job);
+              console.log('✅ Fallback reconstruction completed');
+            }
+          } else {
+            console.log('📝 Using fallback 3D reconstruction');
+            result = await process3DReconstructionJob(job);
+          }
           break;
         case 'hotspot_generation':
           result = await processHotspotGenerationJob(job);

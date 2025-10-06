@@ -2,6 +2,15 @@ const sharp = require('sharp');
 const { getMinioClient } = require('../config/minio');
 const { db } = require('../config/database');
 const logger = require('../utils/logger');
+const path = require('path');
+
+// Try to load python-shell for AI processing
+let PythonShell = null;
+try {
+  PythonShell = require('python-shell').PythonShell;
+} catch (e) {
+  logger.warn('python-shell not available, AI panorama generation will be skipped');
+}
 
 async function processStitchingJob(job) {
   const { room_id, image_ids } = job.data;
@@ -58,10 +67,72 @@ async function processStitchingJob(job) {
       }
     }
 
-    // Perform image stitching
-    logger.info(`Starting image stitching with ${imageBuffers.length} images`);
-    const stitchedResult = await stitchImages(imageBuffers);
-    logger.info(`Stitching completed. Quality: ${stitchedResult.quality}%, Processed: ${stitchedResult.processedImages}, Rejected: ${stitchedResult.rejectedImages}`);
+    // Advanced Panorama Generator for professional-quality stitching
+    logger.info(`Starting advanced panorama generation with ${imageBuffers.length} images`);
+    
+    // Save images temporarily for Python processing
+    const tempDir = path.join(__dirname, '../../temp', `stitch_${job.jobId}`);
+    const fs = require('fs').promises;
+    await fs.mkdir(tempDir, { recursive: true });
+    
+    const tempImagePaths = [];
+    for (let i = 0; i < imageBuffers.length; i++) {
+      const tempPath = path.join(tempDir, `image_${i}.jpg`);
+      await fs.writeFile(tempPath, imageBuffers[i].buffer);
+      tempImagePaths.push(tempPath);
+    }
+    
+    // Call Advanced Panorama Generator
+    let stitchedResult;
+    
+    if (PythonShell) {
+      try {
+        const aiResult = await new Promise((resolve, reject) => {
+          const pythonScript = path.join(__dirname, 'advanced_panorama_generator.py');
+          const args = [tempDir, ...tempImagePaths];
+          
+          PythonShell.run(pythonScript, {
+            mode: 'json',
+            pythonPath: 'python3',
+            args: args
+          }, (err, results) => {
+            if (err) {
+              logger.error('Advanced panorama generation failed:', err.message);
+              reject(err);
+            } else {
+              resolve(results[0]);
+            }
+          });
+        });
+        
+        if (aiResult.success) {
+          // Read generated panorama
+          const panoramaBuffer = await fs.readFile(aiResult.output_files.panorama);
+          stitchedResult = {
+            buffer: panoramaBuffer,
+            quality: aiResult.quality_score * 100 || 95,
+            processedImages: imageBuffers.length,
+            rejectedImages: 0,
+            method: aiResult.method,
+            metadata: aiResult.metadata
+          };
+          logger.info(`Advanced panorama generation successful! Method: ${aiResult.method}, Quality: ${stitchedResult.quality}%`);
+        } else {
+          throw new Error(`Advanced panorama generation failed: ${aiResult.error || 'Unknown error'}`);
+        }
+        
+      } catch (aiError) {
+        logger.error('Advanced panorama generation failed:', aiError.message);
+        throw new Error(`Failed to generate panorama: ${aiError.message}`);
+      }
+    } else {
+      throw new Error('Python environment not available. Advanced panorama generation requires Python with OpenCV, SciPy, and Trimesh.');
+    }
+    
+    // Cleanup temp files
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    
+    logger.info(`Stitching completed. Quality: ${stitchedResult.quality}%, Method: ${stitchedResult.method || 'basic'}`);
 
     // Upload stitched image to MinIO
     const stitchedPath = `projects/${images[0].room_id}/stitched/panorama_${Date.now()}.jpg`;
@@ -75,16 +146,22 @@ async function processStitchingJob(job) {
       }
     );
 
-    // Update room status with metadata
+    // Update room status with metadata INCLUDING panorama_path
     await db('rooms')
       .where({ id: room_id })
       .update({
         status: 'completed',
-        metadata: {
+        metadata: db.raw(`
+          COALESCE(metadata, '{}'::json)::jsonb || ?::jsonb
+        `, [JSON.stringify({
+          panorama_path: stitchedPath,  // PRIMARY field for Virtual Tour
           stitched_image_path: stitchedPath,
           stitched_image_size: stitchedResult.buffer.length,
-          stitching_quality: stitchedResult.quality
-        }
+          stitching_quality: stitchedResult.quality,
+          stitching_method: stitchedResult.method || 'basic',
+          is_360: true,
+          processed_at: new Date().toISOString()
+        })])
       });
 
     // Update image processing status
@@ -143,179 +220,12 @@ async function processStitchingJob(job) {
   }
 }
 
-async function stitchImages(imageBuffers) {
-  // Enhanced stitching implementation with quality gates
-  
-  try {
-    // Quality assessment for each image
-    const qualityResults = await Promise.all(
-      imageBuffers.map(async (imageBuffer, index) => {
-        const metadata = await sharp(imageBuffer.buffer).metadata();
-        const stats = await sharp(imageBuffer.buffer).stats();
-        
-        // Blur detection using image statistics
-        const blurScore = calculateBlurScore(stats);
-        
-        // Exposure detection
-        const exposureScore = calculateExposureScore(stats);
-        
-        // Overall quality score
-        const overallQuality = (blurScore + exposureScore) / 2;
-        
-        return {
-          index,
-          width: metadata.width,
-          height: metadata.height,
-          blurScore,
-          exposureScore,
-          overallQuality,
-          isAcceptable: overallQuality > 60 // Quality threshold
-        };
-      })
-    );
-
-    // Filter out low-quality images
-    const acceptableImages = imageBuffers.filter((_, index) => 
-      qualityResults[index].isAcceptable
-    );
-
-    if (acceptableImages.length < 2) {
-      throw new Error('Insufficient high-quality images for stitching');
-    }
-
-    // Log quality assessment
-    logger.info(`Quality assessment: ${acceptableImages.length}/${imageBuffers.length} images passed quality gates`);
-    qualityResults.forEach(result => {
-      logger.info(`Image ${result.index}: blur=${result.blurScore}, exposure=${result.exposureScore}, overall=${result.overallQuality}`);
-    });
-
-    // For now, we'll create a simple panorama by combining images
-    // In a real implementation, you would:
-    // 1. Detect and match features between images
-    // 2. Calculate homography matrices
-    // 3. Warp and blend images together
-    // 4. Create a seamless panorama
-
-    const firstImage = acceptableImages[0];
-    const firstImageInfo = await sharp(firstImage.buffer).metadata();
-    
-    // Create a wider canvas for the panorama
-    const panoramaWidth = firstImageInfo.width * acceptableImages.length;
-    const panoramaHeight = firstImageInfo.height;
-    
-    // Enhanced stitching with proper image processing
-    let stitchedBuffer;
-    
-    if (acceptableImages.length === 1) {
-      // Single image - just return it with high quality
-      logger.info('Only one acceptable image found, returning as-is');
-      stitchedBuffer = await sharp(acceptableImages[0].buffer)
-        .jpeg({ quality: 95 })
-        .toBuffer();
-    } else {
-      // Multiple images - create composite with better alignment
-      logger.info(`Creating panorama with ${acceptableImages.length} images`);
-      
-      const compositeImages = acceptableImages.map((img, index) => {
-        logger.info(`Adding image ${index + 1}: ${img.filename || img.id}`);
-        return {
-          input: img.buffer,
-          left: index * firstImageInfo.width,
-          top: 0
-        };
-      });
-
-      stitchedBuffer = await sharp({
-        create: {
-          width: panoramaWidth,
-          height: panoramaHeight,
-          channels: 3,
-          background: { r: 0, g: 0, b: 0 }
-        }
-      })
-      .composite(compositeImages)
-      .jpeg({ quality: 95 })
-      .toBuffer();
-      
-      logger.info(`Panorama created: ${panoramaWidth}x${panoramaHeight} pixels`);
-    }
-
-    // Calculate final quality score based on multiple factors
-    const avgQuality = qualityResults
-      .filter(r => r.isAcceptable)
-      .reduce((sum, r) => sum + r.overallQuality, 0) / acceptableImages.length;
-    
-    const imageCountBonus = Math.min(20, acceptableImages.length * 5);
-    const finalQuality = Math.min(95, avgQuality + imageCountBonus);
-
-    return {
-      buffer: stitchedBuffer,
-      quality: finalQuality,
-      processedImages: acceptableImages.length,
-      rejectedImages: imageBuffers.length - acceptableImages.length,
-      qualityMetrics: {
-        averageBlur: qualityResults.reduce((sum, r) => sum + r.blurScore, 0) / qualityResults.length,
-        averageExposure: qualityResults.reduce((sum, r) => sum + r.exposureScore, 0) / qualityResults.length,
-        overallQuality: avgQuality
-      }
-    };
-
-  } catch (error) {
-    logger.error('Image stitching failed:', error);
-    throw new Error('Failed to stitch images');
-  }
-}
-
-// Enhanced blur detection using image statistics
-function calculateBlurScore(stats) {
-  // Use standard deviation as a measure of image sharpness
-  // Higher standard deviation typically indicates sharper images
-  const channels = stats.channels;
-  let totalStdDev = 0;
-  
-  channels.forEach(channel => {
-    totalStdDev += channel.stdev || 0;
-  });
-  
-  const avgStdDev = totalStdDev / channels.length;
-  
-  // Convert to 0-100 scale (higher = sharper)
-  // Typical sharp images have stddev > 30, blurry images < 15
-  const blurScore = Math.min(100, Math.max(0, (avgStdDev - 10) * 3));
-  
-  return blurScore;
-}
-
-// Enhanced exposure detection
-function calculateExposureScore(stats) {
-  const channels = stats.channels;
-  let exposureScore = 100;
-  
-  channels.forEach(channel => {
-    const mean = channel.mean || 0;
-    
-    // Check for overexposure (too bright)
-    if (mean > 240) {
-      exposureScore -= 30;
-    } else if (mean > 200) {
-      exposureScore -= 15;
-    }
-    
-    // Check for underexposure (too dark)
-    if (mean < 15) {
-      exposureScore -= 30;
-    } else if (mean < 40) {
-      exposureScore -= 15;
-    }
-    
-    // Optimal exposure is around 100-180
-    if (mean >= 80 && mean <= 180) {
-      exposureScore += 10; // Bonus for good exposure
-    }
-  });
-  
-  return Math.max(0, Math.min(100, exposureScore));
-}
+// All stitching logic is now handled by the advanced_panorama_generator.py
+// This provides professional-quality stitching with:
+// - Multi-algorithm feature detection (SIFT/SURF/ORB)
+// - Bundle adjustment for optimal alignment
+// - Multi-band blending for seamless results
+// - Quality assessment and optimization
 
 module.exports = {
   processStitchingJob

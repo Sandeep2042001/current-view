@@ -68,10 +68,12 @@ h1 {
   overflow: hidden;
   transition: all 0.3s ease;
   cursor: pointer;
+  border: 1px solid #f0f0f0;
 
   &:hover {
     transform: translateY(-4px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    border-color: #e0e0e0;
   }
 }
 
@@ -179,14 +181,26 @@ img {
 .project-actions {
   padding: 0 20px 20px;
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.action-buttons-row {
+  display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+
+  &.danger-row {
+    border-top: 1px solid #ffebee;
+    padding-top: 12px;
+    margin-top: 8px;
+  }
 }
 
 .action-btn {
-  flex: 1;
-  padding: 8px 12px;
+  padding: 10px 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -195,6 +209,8 @@ img {
   justify-content: center;
   gap: 6px;
   transition: all 0.2s;
+  min-width: 120px;
+  flex: 1;
 
   i {
     font-size: 16px;
@@ -206,6 +222,8 @@ img {
 
     &:hover {
       background: #1976D2;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
     }
   }
 
@@ -219,12 +237,63 @@ img {
   }
 
   &.danger {
-    background: #f5f5f5;
-    color: #F44336;
+    background: #F44336;
+    color: white;
+    border: 2px solid #F44336;
 
     &:hover {
-      background: #ffebee;
+      background: #d32f2f;
+      border-color: #d32f2f;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
     }
+  }
+
+  &.tour {
+    background: #9C27B0;
+    color: white;
+
+    &:hover {
+      background: #7B1FA2;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(156, 39, 176, 0.4);
+    }
+  }
+
+  &.success {
+    background: #4CAF50;
+    color: white;
+
+    &:hover {
+      background: #45a049;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+    }
+  }
+
+  &.warning {
+    background: #FF9800;
+    color: white;
+
+    &:hover {
+      background: #F57C00;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
+    }
+  }
+
+  // Smaller buttons for secondary actions
+  &.small {
+    min-width: 80px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
   }
 }
 
@@ -446,7 +515,16 @@ label {
   }
 
   .project-actions {
+    padding: 0 16px 16px;
+  }
+
+  .action-buttons-row {
     flex-direction: column;
+  }
+
+  .action-btn {
+    min-width: auto;
+    width: 100%;
   }
 
   .modal-content {

@@ -11,11 +11,16 @@ const processingRoutes = require('./processing');
 const adminRoutes = require('./admin');
 const measurementRoutes = require('./measurements');
 const annotationRoutes = require('./annotations');
+const virtualTourRoutes = require('./virtual-tour');
+const filesRoutes = require('./files');
 
 const router = express.Router();
 
 // Public routes (no authentication required)
 router.use('/auth', authRoutes);
+
+// Public file serving (no authentication required)
+router.use('/files', filesRoutes);
 
 // Public image serving (no authentication required)
 router.use('/upload/image-data', imageDataRoute);
@@ -57,6 +62,7 @@ router.use('/processing', authMiddleware, processingRoutes);
 router.use('/admin', authMiddleware, adminRoutes);
 router.use('/measurements', authMiddleware, measurementRoutes);
 router.use('/annotations', authMiddleware, annotationRoutes);
+router.use('/virtual-tour', authMiddleware, virtualTourRoutes);
 
 // Health check endpoint (public)
 router.get('/health', (req, res) => {
@@ -81,6 +87,7 @@ router.get('/', (req, res) => {
       processing: '/api/processing',
       measurements: '/api/measurements',
       annotations: '/api/annotations',
+      virtualTour: '/api/virtual-tour',
       admin: '/api/admin'
     },
     documentation: '/docs',

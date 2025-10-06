@@ -172,6 +172,147 @@ router.post('/hotspots/:roomId', async (req, res) => {
 });
 
 // Start building-level stitching process
+router.post('/3d-reconstruct/:roomId', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+
+    // Get room with images
+    const room = await db('rooms')
+      .join('projects', 'rooms.project_id', 'projects.id')
+      .where({ 'rooms.id': roomId, 'projects.user_id': req.user.id })
+      .select('rooms.*', 'projects.name as project_name')
+      .first();
+
+    if (!room) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
+    // Get all images for this room
+    const images = await db('images')
+      .where({ room_id: roomId })
+      .select('id');
+
+    if (images.length < 2) {
+      return res.status(400).json({ error: 'Need at least 2 images for 3D reconstruction' });
+    }
+
+    // Create processing job
+    const [job] = await db('processing_jobs')
+      .insert({
+        user_id: req.user.id,
+        project_id: room.project_id,
+        type: '3d_reconstruction',
+        status: 'pending',
+        data: {
+          room_id: roomId,
+          image_ids: images.map(img => img.id)
+        }
+      })
+      .returning('*');
+
+    // Add to Redis queue
+    await redisClient.lPush('cv-processing-queue', JSON.stringify({
+      jobId: job.id,
+      type: '3d_reconstruction',
+      data: job.data
+    }));
+
+    logger.info(`3D reconstruction job created for room ${roomId}`);
+
+    res.json({
+      success: true,
+      jobId: job.id,
+      message: `3D reconstruction started for ${images.length} images`
+    });
+
+  } catch (error) {
+    logger.error('Error starting 3D reconstruction:', error);
+    res.status(500).json({ error: 'Failed to start 3D reconstruction' });
+  }
+});
+
+// Batch process all rooms in a project
+router.post('/batch-process/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    // Verify project ownership
+    const project = await db('projects')
+      .where({ id: projectId, user_id: req.user.id })
+      .first();
+
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Get all rooms with images
+    const rooms = await db('rooms')
+      .where({ project_id: projectId })
+      .select('id', 'name');
+
+    if (rooms.length === 0) {
+      return res.status(400).json({ error: 'No rooms found in project' });
+    }
+
+    const jobsCreated = [];
+    const redisClient = getRedisClient();
+
+    // Create processing job for each room
+    for (const room of rooms) {
+      // Get images for this room
+      const images = await db('images')
+        .where({ room_id: room.id })
+        .select('id');
+
+      if (images.length === 0) {
+        logger.info(`Skipping room ${room.name} - no images`);
+        continue;
+      }
+
+      // Create stitching job
+      const jobData = {
+        room_id: room.id,
+        image_ids: images.map(img => img.id)
+      };
+
+      const [job] = await db('processing_jobs')
+        .insert({
+          project_id: projectId,
+          type: 'stitching',
+          status: 'pending',
+          input_data: jobData
+        })
+        .returning('*');
+
+      // Add to Redis queue
+      await redisClient.lPush('cv-processing-queue', JSON.stringify({
+        jobId: job.id,
+        type: 'stitching',
+        data: jobData
+      }));
+
+      jobsCreated.push({
+        room_id: room.id,
+        room_name: room.name,
+        job_id: job.id,
+        image_count: images.length
+      });
+
+      logger.info(`Created stitching job for room ${room.name} (${images.length} images)`);
+    }
+
+    res.json({
+      success: true,
+      message: `Started processing ${jobsCreated.length} rooms`,
+      jobs: jobsCreated
+    });
+
+  } catch (error) {
+    logger.error('Error starting batch processing:', error);
+    res.status(500).json({ error: 'Failed to start batch processing' });
+  }
+});
+
 router.post('/building-stitch/:projectId', async (req, res) => {
   try {
     const { projectId } = req.params;

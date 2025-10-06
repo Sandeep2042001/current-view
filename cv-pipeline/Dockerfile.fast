@@ -2,15 +2,15 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install system dependencies for basic image processing
+# Install system dependencies for OpenCV and image processing
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    make \
-    g++ \
+    python3-dev \
+    build-base \
     cmake \
     pkgconfig \
-    libc6-compat \
+    linux-headers \
     libjpeg-turbo-dev \
     libpng-dev \
     libwebp-dev \
@@ -19,14 +19,19 @@ RUN apk add --no-cache \
     bash \
     git
 
-# Install Python dependencies for basic processing
-RUN pip3 install --break-system-packages numpy pillow
+# Install OpenCV and scientific Python packages via Alpine package manager
+RUN apk add --no-cache \
+    opencv \
+    opencv-dev \
+    py3-opencv \
+    py3-scipy \
+    py3-numpy
 
 # Copy package files
 COPY package*.json ./
 
 # Install Node.js dependencies
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copy source code
 COPY . .

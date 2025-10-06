@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const { getMinioClient } = require('../config/minio');
 const { db } = require('../config/database');
 const logger = require('../utils/logger');
+const panoramaValidator = require('../services/panorama-validator');
 
 const router = express.Router();
 
@@ -51,11 +52,33 @@ router.post('/image/:roomId', upload.single('image'), async (req, res) => {
     const filename = `${fileId}.${fileExtension}`;
     const storagePath = `projects/${room.project_id}/rooms/${roomId}/images/${filename}`;
 
-    // Process image with Sharp
-    const processedImage = await sharp(req.file.buffer)
-      .resize(4096, 2048, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 90 })
-      .toBuffer();
+    // Validate panorama first
+    const validationResult = await panoramaValidator.validatePanorama(req.file.buffer);
+    
+    if (!validationResult.isValid) {
+      logger.warn('Invalid panorama upload attempt:', validationResult.errors);
+      return res.status(400).json({
+        error: 'Invalid 360° panorama image',
+        details: validationResult.errors,
+        validation: validationResult
+      });
+    }
+
+    // Log warnings if any
+    if (validationResult.warnings.length > 0) {
+      logger.warn('Panorama validation warnings:', validationResult.warnings);
+    }
+
+    // Process and optimize panorama
+    const processed = await panoramaValidator.processPanorama(req.file.buffer, {
+      quality: 90,
+      progressive: true,
+      stripMetadata: true,
+      generateThumbnail: true,
+      generatePreview: true
+    });
+
+    const processedImage = processed.optimizedBuffer;
 
     // Upload to MinIO
     const minioClient = getMinioClient();
@@ -79,6 +102,22 @@ router.post('/image/:roomId', upload.single('image'), async (req, res) => {
       }
     }
 
+    // Enrich metadata with validation and quality data
+    const enrichedMetadata = {
+      ...parsedMetadata,
+      validation: validationResult,
+      processing: {
+        originalSize: req.file.buffer.length,
+        optimizedSize: processedImage.length,
+        compressionRatio: processed.stats.compressionRatio
+      },
+      resolution: {
+        width: validationResult.metadata.width,
+        height: validationResult.metadata.height,
+        quality: validationResult.quality.resolution
+      }
+    };
+
     // Save image record to database
     const [image] = await db('images')
       .insert({
@@ -88,20 +127,29 @@ router.post('/image/:roomId', upload.single('image'), async (req, res) => {
         mime_type: req.file.mimetype,
         file_size: processedImage.length,
         storage_path: storagePath,
-        metadata: parsedMetadata,
+        metadata: enrichedMetadata,
         processing_status: {
           uploaded: true,
-          processed: false,
+          processed: true,
+          validated: validationResult.isValid,
           stitched: false
         }
       })
       .returning('*');
 
-    logger.info(`Image uploaded: ${filename} for room ${roomId}`);
+    logger.info(`360° panorama uploaded and validated: ${filename}`, {
+      quality: validationResult.quality.resolution,
+      aspectRatio: validationResult.quality.aspectRatio
+    });
 
     res.status(201).json({
-      message: 'Image uploaded successfully',
-      image
+      message: 'Panorama uploaded and validated successfully',
+      image,
+      validation: {
+        isValid: validationResult.isValid,
+        quality: validationResult.quality.resolution,
+        warnings: validationResult.warnings
+      }
     });
   } catch (error) {
     logger.error('Error uploading image:', error);

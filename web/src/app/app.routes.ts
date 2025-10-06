@@ -27,6 +27,21 @@ export const AppRoutes: Routes = [
     canActivate: [AuthGuard]
   },
   { 
+    path: 'virtual-tour/:projectId', 
+    loadComponent: () => import('./components/virtual-tour/virtual-tour.component').then(m => m.VirtualTourComponent),
+    canActivate: [AuthGuard]
+  },
+  { 
+    path: 'floor-plan/:projectId', 
+    loadComponent: () => import('./components/floor-plan-editor/floor-plan-editor.component').then(m => m.FloorPlanEditorComponent),
+    canActivate: [AuthGuard]
+  },
+  { 
+    path: 'walkthrough/:projectId', 
+    loadComponent: () => import('./components/walkthrough-viewer/walkthrough-viewer.component').then(m => m.WalkthroughViewerComponent),
+    canActivate: [AuthGuard]
+  },
+  { 
     path: 'admin', 
     loadComponent: () => import('./components/admin-dashboard/admin-dashboard.component').then(m => m.AdminDashboardComponent),
     canActivate: [AdminGuard]

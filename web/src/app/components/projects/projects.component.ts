@@ -64,28 +64,52 @@ import { Project } from '../../models/user.model';
 
           <!-- Project Actions -->
           <div class="project-actions">
-            <button (click)="openProject(project); $event.stopPropagation()" 
-                    class="action-btn primary">
-              <i class="material-icons">visibility</i>
-              View
-            </button>
-            <button (click)="editProject(project); $event.stopPropagation()" 
-                    class="action-btn secondary">
-              <i class="material-icons">edit</i>
-              Edit
-            </button>
-            <button (click)="startBuildingStitching(project); $event.stopPropagation()" 
-                    class="action-btn success"
-                    *ngIf="project.status === 'completed' && !project.metadata?.['building_panorama_path']"
-                    [disabled]="(project.room_count || 0) < 1">
-              <i class="material-icons">business</i>
-              Create Building View
-            </button>
-            <button (click)="deleteProject(project); $event.stopPropagation()" 
-                    class="action-btn danger">
-              <i class="material-icons">delete</i>
-              Delete
-            </button>
+            <!-- Primary Actions Row -->
+            <div class="action-buttons-row">
+              <button (click)="openProject(project); $event.stopPropagation()" 
+                      class="action-btn primary">
+                <i class="material-icons">visibility</i>
+                View
+              </button>
+              <button (click)="startVirtualTour(project); $event.stopPropagation()" 
+                      class="action-btn tour"
+                      *ngIf="(project.room_count || 0) > 0">
+                <i class="material-icons">360</i>
+                Virtual Tour
+              </button>
+            </div>
+
+            <!-- Secondary Actions Row -->
+            <div class="action-buttons-row" *ngIf="(project.room_count || 0) > 0">
+              <button (click)="editFloorPlan(project); $event.stopPropagation()" 
+                      class="action-btn warning">
+                <i class="material-icons">edit_location</i>
+                Floor Plan
+              </button>
+              <button (click)="batchProcessRooms(project); $event.stopPropagation()" 
+                      class="action-btn primary">
+                <i class="material-icons">auto_awesome</i>
+                Process Rooms
+              </button>
+            </div>
+
+            <!-- Special Actions Row -->
+            <div class="action-buttons-row" *ngIf="project.status === 'completed' && !project.metadata?.['building_panorama_path'] && (project.room_count || 0) > 0">
+              <button (click)="startBuildingStitching(project); $event.stopPropagation()" 
+                      class="action-btn success">
+                <i class="material-icons">business</i>
+                Create Building View
+              </button>
+            </div>
+
+            <!-- Danger Actions Row -->
+            <div class="action-buttons-row danger-row">
+              <button (click)="deleteProject(project); $event.stopPropagation()" 
+                      class="action-btn danger">
+                <i class="material-icons">delete</i>
+                Delete Project
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -238,6 +262,47 @@ export class ProjectsComponent implements OnInit {
       } catch (error) {
         this.toastr.error('Failed to delete project');
         console.error('Error deleting project:', error);
+      }
+    }
+  }
+
+  startVirtualTour(project: Project) {
+    // Use new walkthrough viewer with FPS-style navigation
+    this.router.navigate(['/walkthrough', project.id]);
+  }
+
+  editFloorPlan(project: Project) {
+    this.router.navigate(['/floor-plan', project.id]);
+  }
+
+  async batchProcessRooms(project: Project) {
+    if (confirm(`Process all rooms in "${project.name}"? This will create seamless 360° panoramas from uploaded images using AI-powered stitching.`)) {
+      try {
+        this.toastr.info('Starting batch processing for all rooms...');
+        
+        const response = await fetch(`http://localhost:3000/api/processing/batch-process/${project.id}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.authService.getToken()}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to start batch processing');
+        }
+
+        const result = await response.json();
+        this.toastr.success(`Processing started for ${result.jobs.length} rooms! Check back in a few minutes.`);
+        
+        // Refresh projects after a delay
+        setTimeout(() => {
+          this.loadProjects();
+        }, 2000);
+
+      } catch (error) {
+        this.toastr.error('Failed to start batch processing');
+        console.error('Error starting batch processing:', error);
       }
     }
   }

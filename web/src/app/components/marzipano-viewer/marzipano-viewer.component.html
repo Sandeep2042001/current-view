@@ -1,0 +1,109 @@
+<div class="marzipano-viewer-container">
+  <!-- Main viewer container -->
+  <div #viewerContainer class="viewer-container" [class.controls-hidden]="!showControls">
+    <!-- Loading indicator -->
+    <div class="loading-indicator" *ngIf="!viewer">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading 360° Viewer...</div>
+    </div>
+  </div>
+
+  <!-- Control Panel -->
+  <div class="control-panel" *ngIf="showControls">
+    <!-- Scene Navigation -->
+    <div class="scene-navigation">
+      <button class="nav-button prev" (click)="previousScene()" [disabled]="getSceneCount() <= 1">
+        <i class="material-icons">chevron_left</i>
+      </button>
+      
+      <div class="scene-info">
+        <div class="scene-name">{{ getCurrentScene()?.name || 'No Scene' }}</div>
+        <div class="scene-counter">{{ getCurrentSceneIndex() + 1 }} / {{ getSceneCount() }}</div>
+      </div>
+      
+      <button class="nav-button next" (click)="nextScene()" [disabled]="getSceneCount() <= 1">
+        <i class="material-icons">chevron_right</i>
+      </button>
+    </div>
+
+    <!-- View Controls -->
+    <div class="view-controls">
+      <button class="control-button reset" (click)="resetView()" title="Reset View">
+        <i class="material-icons">refresh</i>
+      </button>
+      
+      <button class="control-button autorotate" 
+              [class.active]="autorotate" 
+              (click)="toggleAutorotate()" 
+              title="Toggle Autorotate">
+        <i class="material-icons">{{ autorotate ? 'pause' : 'play_arrow' }}</i>
+      </button>
+    </div>
+
+    <!-- Scene List -->
+    <div class="scene-list" *ngIf="scenes.length > 1">
+      <div class="scene-list-header">
+        <span>Scenes</span>
+        <button class="toggle-button" (click)="showSceneList = !showSceneList">
+          <i class="material-icons">{{ showSceneList ? 'expand_less' : 'expand_more' }}</i>
+        </button>
+      </div>
+      
+      <div class="scene-items" [class.expanded]="showSceneList">
+        <div class="scene-item" 
+             *ngFor="let scene of scenes; let i = index"
+             [class.active]="scene.id === currentSceneId"
+             (click)="switchToScene(scene.id)">
+          <div class="scene-thumbnail">
+            <img [src]="scene.imageUrl" [alt]="scene.name" />
+          </div>
+          <div class="scene-details">
+            <div class="scene-name">{{ scene.name }}</div>
+            <div class="scene-hotspots">
+              {{ scene.linkHotspots.length + scene.infoHotspots.length }} hotspots
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hotspot Tooltips -->
+  <div class="hotspot-tooltips">
+    <!-- Tooltips are dynamically created by the viewer service -->
+  </div>
+
+  <!-- Info Panel -->
+  <div class="info-panel" *ngIf="getCurrentScene()">
+    <div class="scene-title">{{ getCurrentScene()?.name }}</div>
+    <div class="scene-description" *ngIf="getCurrentScene()?.description">
+      {{ getCurrentScene()?.description }}
+    </div>
+    <div class="scene-stats">
+      <span class="stat">
+        <i class="material-icons">visibility</i>
+        {{ getCurrentScene()?.linkHotspots?.length || 0 }} Links
+      </span>
+      <span class="stat">
+        <i class="material-icons">info</i>
+        {{ getCurrentScene()?.infoHotspots?.length || 0 }} Info Points
+      </span>
+    </div>
+  </div>
+
+  <!-- Fullscreen Toggle -->
+  <button class="fullscreen-toggle" (click)="toggleFullscreen()" title="Toggle Fullscreen">
+    <i class="material-icons">{{ isFullscreen ? 'fullscreen_exit' : 'fullscreen' }}</i>
+  </button>
+</div>
+
+<!-- Error Messages -->
+<div class="error-messages" *ngIf="errorMessage">
+  <div class="error-message">
+    <i class="material-icons">error</i>
+    <span>{{ errorMessage }}</span>
+    <button class="close-error" (click)="errorMessage = ''">
+      <i class="material-icons">close</i>
+    </button>
+  </div>
+</div>
