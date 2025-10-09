@@ -199,11 +199,10 @@ router.post('/3d-reconstruct/:roomId', async (req, res) => {
     // Create processing job
     const [job] = await db('processing_jobs')
       .insert({
-        user_id: req.user.id,
         project_id: room.project_id,
         type: '3d_reconstruction',
         status: 'pending',
-        data: {
+        input_data: {
           room_id: roomId,
           image_ids: images.map(img => img.id)
         }
@@ -211,10 +210,11 @@ router.post('/3d-reconstruct/:roomId', async (req, res) => {
       .returning('*');
 
     // Add to Redis queue
+    const redisClient = getRedisClient();
     await redisClient.lPush('cv-processing-queue', JSON.stringify({
       jobId: job.id,
       type: '3d_reconstruction',
-      data: job.data
+      data: job.input_data
     }));
 
     logger.info(`3D reconstruction job created for room ${roomId}`);
@@ -278,6 +278,7 @@ router.post('/batch-process/:projectId', async (req, res) => {
       const [job] = await db('processing_jobs')
         .insert({
           project_id: projectId,
+          user_id: req.user.id,
           type: 'stitching',
           status: 'pending',
           input_data: jobData

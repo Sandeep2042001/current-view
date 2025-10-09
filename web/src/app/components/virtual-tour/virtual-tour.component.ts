@@ -2,7 +2,8 @@ import { Component, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ToastrService } from 'ngx-toastr';
-import { MarzipanoViewerComponent, Scene, Hotspot as MarzipanoHotspot } from '../marzipano-viewer/marzipano-viewer.component';
+import { EnhancedMarzipanoViewerComponent } from '../enhanced-marzipano-viewer/enhanced-marzipano-viewer.component';
+import { MarzipanoScene } from '../../services/enhanced-marzipano.service';
 import { AuthService } from '../../services/auth.service';
 
 export interface Room {
@@ -39,7 +40,7 @@ export interface TourData {
 @Component({
   selector: 'app-virtual-tour',
   standalone: true,
-  imports: [CommonModule, MarzipanoViewerComponent],
+  imports: [CommonModule, EnhancedMarzipanoViewerComponent],
   template: `
     <div class="virtual-tour-container">
       <!-- Tour Header -->
@@ -59,17 +60,19 @@ export interface TourData {
         </div>
       </div>
 
-      <!-- Marzipano Viewer -->
+      <!-- Enhanced Marzipano Viewer -->
       <div class="viewer-wrapper">
-        <app-marzipano-viewer
+        <app-enhanced-marzipano-viewer
           #marzipanoViewer
-          [scenes]="scenes"
+          [scenes]="marzipanoScenes"
           [currentSceneId]="currentSceneId"
-          [showControls]="true"
-          [autorotate]="false"
+          [enableVR]="enableVR"
+          [enableAutorotate]="enableAutorotate"
+          [autorotateSpeed]="autorotateSpeed"
           (sceneChange)="onSceneChange($event)"
-          (hotspotClick)="onHotspotClick($event)">
-        </app-marzipano-viewer>
+          (hotspotClick)="onHotspotClick($event)"
+          (viewerReady)="onViewerReady($event)">
+        </app-enhanced-marzipano-viewer>
       </div>
 
       <!-- Room Navigation -->
@@ -132,15 +135,20 @@ export interface TourData {
   styleUrls: ['./virtual-tour.component.scss']
 })
 export class VirtualTourComponent implements OnInit {
-  @ViewChild('marzipanoViewer') marzipanoViewer!: MarzipanoViewerComponent;
+  @ViewChild('marzipanoViewer') marzipanoViewer!: EnhancedMarzipanoViewerComponent;
 
   projectId: string = '';
   tourData: TourData | null = null;
-  scenes: Scene[] = [];
+  marzipanoScenes: MarzipanoScene[] = [];
   currentSceneId: string = '';
   currentRoom: Room | null = null;
   currentRoomIndex: number = 0;
   currentHotspots: RoomHotspot[] = [];
+  
+  // Enhanced features
+  enableVR: boolean = false;
+  enableAutorotate: boolean = false;
+  autorotateSpeed: number = 0.03;
   
   loading = false;
   error: string | null = null;
@@ -185,7 +193,7 @@ export class VirtualTourComponent implements OnInit {
 
       // Convert rooms to Marzipano scenes
       if (this.tourData && this.tourData.rooms) {
-        this.scenes = this.convertRoomsToScenes(this.tourData.rooms);
+        this.marzipanoScenes = this.convertRoomsToMarzipanoScenes(this.tourData.rooms);
       }
 
       // Set starting room
@@ -199,7 +207,7 @@ export class VirtualTourComponent implements OnInit {
         console.log('✅ Tour loaded:', this.tourData.total_rooms, 'rooms,', this.tourData.total_hotspots, 'hotspots');
         console.log('🖼️ Current room panorama URL:', this.currentRoom?.panorama_url);
         console.log('📊 Tour data:', this.tourData);
-        console.log('🎬 Scenes converted:', this.scenes.length);
+        console.log('🎬 Scenes converted:', this.marzipanoScenes.length);
       }
 
       this.loading = false;
@@ -214,10 +222,10 @@ export class VirtualTourComponent implements OnInit {
   /**
    * Convert rooms to Marzipano scenes
    */
-  private convertRoomsToScenes(rooms: Room[]): Scene[] {
+  private convertRoomsToMarzipanoScenes(rooms: Room[]): MarzipanoScene[] {
     return rooms.map(room => {
       // Convert 3D hotspots to Marzipano-style hotspots
-      const linkHotspots: MarzipanoHotspot[] = room.hotspots
+      const linkHotspots: any[] = room.hotspots
         .filter((h: RoomHotspot) => h.type === 'navigation')
         .map((h: RoomHotspot) => ({
           id: h.id,
@@ -228,11 +236,10 @@ export class VirtualTourComponent implements OnInit {
           target: h.target_room_id
         }));
 
-      const infoHotspots: MarzipanoHotspot[] = room.hotspots
+      const infoHotspots: any[] = room.hotspots
         .filter((h: RoomHotspot) => h.type === 'info')
         .map((h: RoomHotspot) => ({
           id: h.id,
-          type: 'info' as const,
           yaw: this.positionToYaw(h.position),
           pitch: this.positionToPitch(h.position),
           title: h.title || 'Information',
@@ -242,12 +249,7 @@ export class VirtualTourComponent implements OnInit {
       return {
         id: room.id,
         name: room.name,
-        imageUrl: room.panorama_url,
-        levels: [
-          { width: 2048, tileSize: 512 },
-          { width: 1024, tileSize: 512 },
-          { width: 512, tileSize: 256 }
-        ],
+        panoramaUrl: room.panorama_url,
         initialViewParameters: {
           yaw: 0,
           pitch: 0,
@@ -287,10 +289,17 @@ export class VirtualTourComponent implements OnInit {
     }
   }
 
-  onHotspotClick(hotspot: MarzipanoHotspot) {
+  onHotspotClick(hotspot: any) {
     console.log('Hotspot clicked:', hotspot);
-    this.navigateToRoom(hotspot.target);
-    this.toastr.info(`Moving to ${hotspot.title || 'next room'}`);
+    if (hotspot.target) {
+      this.navigateToRoom(hotspot.target);
+      this.toastr.info(`Moving to ${hotspot.title || 'next room'}`);
+    }
+  }
+
+  onViewerReady(viewer: any) {
+    console.log('Enhanced Marzipano viewer ready:', viewer);
+    // Viewer is ready, can add additional setup here
   }
 
   navigateToRoom(roomId: string | undefined) {
@@ -353,5 +362,21 @@ export class VirtualTourComponent implements OnInit {
 
   retryLoad() {
     this.loadTourData();
+  }
+
+  // Enhanced Marzipano features
+  toggleVR() {
+    this.enableVR = !this.enableVR;
+    console.log('VR mode:', this.enableVR ? 'enabled' : 'disabled');
+  }
+
+  toggleAutorotate() {
+    this.enableAutorotate = !this.enableAutorotate;
+    console.log('Autorotate:', this.enableAutorotate ? 'enabled' : 'disabled');
+  }
+
+  setAutorotateSpeed(speed: number) {
+    this.autorotateSpeed = speed;
+    console.log('Autorotate speed set to:', speed);
   }
 }

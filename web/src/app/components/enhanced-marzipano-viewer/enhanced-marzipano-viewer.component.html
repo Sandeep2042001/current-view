@@ -1,0 +1,73 @@
+<div class="enhanced-marzipano-viewer">
+  <!-- Main viewer container -->
+  <div #viewerContainer class="viewer-container"></div>
+
+  <!-- Control overlay -->
+  <div class="controls-overlay">
+    <!-- Scene navigation -->
+    <div class="scene-controls" *ngIf="scenes.length > 1">
+      <button 
+        class="control-btn scene-btn" 
+        *ngFor="let scene of scenes"
+        [class.active]="scene.id === currentSceneId"
+        (click)="switchToScene(scene.id)">
+        {{ scene.name }}
+      </button>
+    </div>
+
+    <!-- Viewer controls -->
+    <div class="viewer-controls">
+      <!-- Autorotate toggle -->
+      <button 
+        class="control-btn autorotate-btn"
+        [class.active]="enableAutorotate"
+        (click)="toggleAutorotate()"
+        title="Toggle Auto-rotation">
+        <i class="material-icons">rotate_right</i>
+      </button>
+
+      <!-- VR toggle -->
+      <button 
+        class="control-btn vr-btn"
+        [class.active]="enableVR"
+        (click)="toggleVR()"
+        title="Toggle VR Mode">
+        <i class="material-icons">view_in_ar</i>
+      </button>
+
+      <!-- Fullscreen toggle -->
+      <button 
+        class="control-btn fullscreen-btn"
+        (click)="toggleFullscreen()"
+        title="Toggle Fullscreen">
+        <i class="material-icons">fullscreen</i>
+      </button>
+    </div>
+
+    <!-- Scene info -->
+    <div class="scene-info" *ngIf="getCurrentScene()">
+      <div class="scene-name">{{ getCurrentScene()?.data?.name }}</div>
+      <div class="scene-stats">
+        <span *ngIf="getCurrentScene()?.data?.linkHotspots?.length">
+          {{ getCurrentScene()?.data?.linkHotspots?.length }} links
+        </span>
+        <span *ngIf="getCurrentScene()?.data?.infoHotspots?.length">
+          {{ getCurrentScene()?.data?.infoHotspots?.length }} info points
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading indicator -->
+  <div class="loading-indicator" *ngIf="!isInitialized">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading 360° Viewer...</div>
+  </div>
+
+  <!-- VR mode indicator -->
+  <div class="vr-indicator" *ngIf="enableVR">
+    <i class="material-icons">view_in_ar</i>
+    <span>VR Mode Active</span>
+  </div>
+</div>
+

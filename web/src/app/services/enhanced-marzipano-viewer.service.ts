@@ -160,17 +160,13 @@ export class EnhancedMarzipanoViewerService {
    */
   private createEnhancedLinkHotspot(hotspotData: Hotspot, sceneData: Scene): HTMLElement {
     const wrapper = document.createElement('div');
-    wrapper.className = 'enhanced-hotspot link-hotspot';
+    wrapper.className = 'hotspot link-hotspot';
     wrapper.innerHTML = `
-      <div class="hotspot-icon">
-        <i class="material-icons">arrow_forward</i>
-        <div class="pulse-ring"></div>
+      <div class="link-hotspot-icon">
+        <i class="material-icons">keyboard_arrow_up</i>
       </div>
       <div class="hotspot-tooltip">
-        <div class="tooltip-title">${hotspotData.title}</div>
-        ${hotspotData.roomLabel ? `<div class="room-label">${hotspotData.roomLabel}</div>` : ''}
-        ${hotspotData.distance ? `<div class="distance">${hotspotData.distance}m away</div>` : ''}
-        <div class="tooltip-arrow">Click to enter</div>
+        ${hotspotData.title || hotspotData.roomLabel || 'Navigate'}
       </div>
     `;
 

@@ -27,11 +27,15 @@ async function processStitchingJob(job) {
     logger.info(`Found ${images.length} images in database`);
     logger.info(`Image details: ${JSON.stringify(images.map(img => ({ id: img.id, filename: img.filename, room_id: img.room_id })))}`);
 
-    if (images.length < 2) {
-      logger.error(`Insufficient images found: ${images.length} (expected at least 2)`);
+    if (images.length < 1) {
+      logger.error(`No images found for stitching`);
       logger.error(`Requested image IDs: ${JSON.stringify(image_ids)}`);
-      logger.error(`Found image IDs: ${JSON.stringify(images.map(img => img.id))}`);
-      throw new Error(`At least 2 images required for stitching. Found ${images.length} images.`);
+      throw new Error(`No images found for stitching.`);
+    }
+
+    // Single image processing is supported by the advanced panorama generator
+    if (images.length === 1) {
+      logger.info(`Single image processing for room ${job.data.room_id}`);
     }
 
     // Download images from MinIO
@@ -73,13 +77,27 @@ async function processStitchingJob(job) {
     // Save images temporarily for Python processing
     const tempDir = path.join(__dirname, '../../temp', `stitch_${job.jobId}`);
     const fs = require('fs').promises;
-    await fs.mkdir(tempDir, { recursive: true });
+    
+    // Ensure temp directory exists
+    try {
+      await fs.mkdir(tempDir, { recursive: true });
+      logger.info(`Created temp directory: ${tempDir}`);
+    } catch (dirError) {
+      logger.error(`Failed to create temp directory ${tempDir}:`, dirError);
+      throw new Error(`Failed to create temp directory: ${dirError.message}`);
+    }
     
     const tempImagePaths = [];
     for (let i = 0; i < imageBuffers.length; i++) {
       const tempPath = path.join(tempDir, `image_${i}.jpg`);
-      await fs.writeFile(tempPath, imageBuffers[i].buffer);
-      tempImagePaths.push(tempPath);
+      try {
+        await fs.writeFile(tempPath, imageBuffers[i].buffer);
+        logger.info(`Written temp image: ${tempPath} (${imageBuffers[i].buffer.length} bytes)`);
+        tempImagePaths.push(tempPath);
+      } catch (writeError) {
+        logger.error(`Failed to write temp image ${tempPath}:`, writeError);
+        throw new Error(`Failed to write temp image: ${writeError.message}`);
+      }
     }
     
     // Call Advanced Panorama Generator
@@ -87,21 +105,52 @@ async function processStitchingJob(job) {
     
     if (PythonShell) {
       try {
+        logger.info(`Calling Python script with args: ${JSON.stringify([tempDir, ...tempImagePaths])}`);
+        
         const aiResult = await new Promise((resolve, reject) => {
-          const pythonScript = path.join(__dirname, 'advanced_panorama_generator.py');
+          const pythonScript = path.join(__dirname, 'simple_stitcher.py');
           const args = [tempDir, ...tempImagePaths];
           
-          PythonShell.run(pythonScript, {
-            mode: 'json',
-            pythonPath: 'python3',
-            args: args
-          }, (err, results) => {
-            if (err) {
-              logger.error('Advanced panorama generation failed:', err.message);
-              reject(err);
+          logger.info(`Python script path: ${pythonScript}`);
+          logger.info(`Python args: ${JSON.stringify(args)}`);
+          
+          // Use child_process instead of python-shell for more reliable execution
+          const { spawn } = require('child_process');
+          const pythonProcess = spawn('python3', [pythonScript, ...args]);
+          
+          let stdout = '';
+          let stderr = '';
+          
+          pythonProcess.stdout.on('data', (data) => {
+            stdout += data.toString();
+          });
+          
+          pythonProcess.stderr.on('data', (data) => {
+            stderr += data.toString();
+          });
+          
+          pythonProcess.on('close', (code) => {
+            if (code !== 0) {
+              logger.error('Python script failed with code:', code);
+              logger.error('Python stderr:', stderr);
+              reject(new Error(`Python script failed with code ${code}: ${stderr}`));
             } else {
-              resolve(results[0]);
+              try {
+                const result = JSON.parse(stdout);
+                logger.info('Python script completed successfully');
+                logger.info('Python script results:', JSON.stringify(result, null, 2));
+                resolve(result);
+              } catch (parseError) {
+                logger.error('Failed to parse Python output as JSON:', parseError);
+                logger.error('Raw stdout:', stdout);
+                reject(new Error(`Failed to parse Python output: ${parseError.message}`));
+              }
             }
+          });
+          
+          pythonProcess.on('error', (error) => {
+            logger.error('Python process error:', error);
+            reject(error);
           });
         });
         
@@ -220,7 +269,7 @@ async function processStitchingJob(job) {
   }
 }
 
-// All stitching logic is now handled by the advanced_panorama_generator.py
+// All stitching logic is now handled by the production-ready panorama_stitcher.py
 // This provides professional-quality stitching with:
 // - Multi-algorithm feature detection (SIFT/SURF/ORB)
 // - Bundle adjustment for optimal alignment

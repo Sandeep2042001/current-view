@@ -80,15 +80,16 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
              class="hotspot" 
               [style.left.px]="hotspot.screenPosition?.x || 0"
               [style.top.px]="hotspot.screenPosition?.y || 0"
-              [style.display]="hotspot.screenPosition?.visible !== false ? 'block' : 'none'"
+              [style.display]="hotspot.screenPosition?.visible !== false ? 'flex' : 'none'"
              [class]="'hotspot-' + hotspot.type"
-             (click)="onHotspotClick(hotspot)">
+             (click)="onHotspotClick(hotspot, $event)"
+             (mouseenter)="onHotspotHover(hotspot, true)"
+             (mouseleave)="onHotspotHover(hotspot, false)">
           <div class="hotspot-icon">
             <i class="material-icons">{{ getHotspotIcon(hotspot.type) }}</i>
           </div>
-          <div class="hotspot-tooltip" *ngIf="hotspot.showTooltip">
-            <h4>{{ hotspot.title }}</h4>
-            <p>{{ hotspot.description }}</p>
+          <div class="hotspot-label" *ngIf="hotspot.showLabel !== false">
+            {{ getHotspotDisplayTitle(hotspot) }}
           </div>
         </div>
 
@@ -655,8 +656,8 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private async loadMeasurements(): Promise<Measurement[]> {
     try {
-      const measurements = await this.measurementService.getMeasurements(this.currentRoomId).toPromise();
-      return (measurements || []).map(measurement => {
+      const measurements = this.measurementService.getMeasurements(this.currentRoomId);
+      return (measurements || []).map((measurement: any) => {
         // Debug logging
         console.log('Raw measurement from API:', measurement);
         console.log('Distance type:', typeof measurement.distance, 'Value:', measurement.distance);
@@ -676,11 +677,24 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // UI Event Handlers
-  onHotspotClick(hotspot: Hotspot) {
+  onHotspotClick(hotspot: Hotspot, event?: Event) {
+    // Stop event propagation to prevent canvas click handlers from interfering
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    
     if (hotspot.type === 'navigation' && hotspot.target_room_id) {
       this.switchToRoom(hotspot.target_room_id);
     } else {
       this.toastr.info(hotspot.title || 'Hotspot clicked');
+    }
+  }
+
+  onHotspotHover(hotspot: Hotspot, isHovering: boolean) {
+    // Add any hover effects or state management here
+    if (isHovering) {
+      console.log('Hovering over hotspot:', hotspot.title);
     }
   }
 
@@ -958,6 +972,11 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private onAnnotationClick(event: MouseEvent) {
+    // Check if click is on a hotspot - if so, let the hotspot handle it
+    if (this.isClickOnHotspot(event)) {
+      return;
+    }
+    
     const position = this.getClickPosition(event);
     if (position) {
       this.createAnnotation(position);
@@ -965,10 +984,36 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private onMeasurementClick(event: MouseEvent) {
+    // Check if click is on a hotspot - if so, let the hotspot handle it
+    if (this.isClickOnHotspot(event)) {
+      return;
+    }
+    
     const position = this.getClickPosition(event);
     if (position) {
       this.addMeasurementPoint(position);
     }
+  }
+
+  private isClickOnHotspot(event: MouseEvent): boolean {
+    // Check if the click coordinates intersect with any hotspot
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const clickY = event.clientY - rect.top;
+    
+    return this.hotspots.some(hotspot => {
+      if (!hotspot.screenPosition || hotspot.screenPosition.visible === false) {
+        return false;
+      }
+      
+      const hotspotX = hotspot.screenPosition.x;
+      const hotspotY = hotspot.screenPosition.y;
+      const hotspotSize = 40; // Approximate hotspot size
+      
+      // Check if click is within hotspot bounds
+      return Math.abs(clickX - hotspotX) < hotspotSize / 2 && 
+             Math.abs(clickY - hotspotY) < hotspotSize / 2;
+    });
   }
 
   private getClickPosition(event: MouseEvent): { x: number; y: number; z: number } | null {
@@ -1059,12 +1104,12 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     
     try {
-      const measurement = await this.measurementService.createMeasurement(this.currentRoomId, {
+      const measurement = this.measurementService.createMeasurement(this.currentRoomId, {
         type: this.measurementType,
         points: this.measurementPoints,
         unit: 'meters',
         label: `${this.measurementType} measurement`
-      }).toPromise();
+      });
       
       if (measurement) {
         this.measurements.push(measurement);
@@ -1093,11 +1138,44 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   // Helper Methods
   getHotspotIcon(type: string): string {
     switch (type) {
-      case 'navigation': return 'navigation';
+      case 'navigation': return 'keyboard_arrow_up'; // Upward arrow like in your example
       case 'info': return 'info';
       case 'measurement': return 'straighten';
       default: return 'place';
     }
+  }
+
+  getHotspotDisplayTitle(hotspot: Hotspot): string {
+    if (hotspot.type === 'navigation') {
+      // For navigation hotspots, show the target room name
+      const targetRoom = this.rooms.find(r => r.id === hotspot.target_room_id);
+      if (targetRoom) {
+        return targetRoom.name;
+      }
+      
+      // Fallback to cleaned up title
+      let title = hotspot.title || '';
+      title = title.replace(/Press\s+[A-Z]\s+to\s+/i, '');
+      title = title.replace(/go to\s*/i, '');
+      title = title.replace(/navigate to\s*/i, '');
+      return title || 'Navigate';
+    }
+    
+    return hotspot.title || '';
+  }
+
+  getHotspotDisplayDescription(hotspot: Hotspot): string {
+    let description = hotspot.description || '';
+    
+    if (hotspot.type === 'navigation') {
+      // Provide click-friendly description
+      if (description.toLowerCase().includes('press') || description.toLowerCase().includes('e')) {
+        const targetRoom = this.rooms.find(r => r.id === hotspot.target_room_id);
+        description = targetRoom ? `Click to navigate to ${targetRoom.name}` : 'Click to navigate';
+      }
+    }
+    
+    return description;
   }
 
   getAnnotationIcon(type: string): string {

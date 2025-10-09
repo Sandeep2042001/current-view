@@ -90,6 +90,7 @@ export interface Hotspot {
   created_at: string;
   screenPosition?: { x: number; y: number; visible?: boolean };
   showTooltip?: boolean;
+  showLabel?: boolean;
 }
 
 export interface Annotation {

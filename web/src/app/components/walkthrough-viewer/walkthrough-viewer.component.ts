@@ -57,7 +57,7 @@ interface WalkthroughScene {
         </div>
         
         <div class="interaction-hint" *ngIf="nearbyHotspot">
-          <p>Press <strong>E</strong> to {{ nearbyHotspot.label || 'interact' }}</p>
+          <p>Click to {{ nearbyHotspot.label || 'interact' }}</p>
         </div>
 
         <button (click)="exitWalkthrough()" class="exit-btn">
@@ -191,14 +191,15 @@ interface WalkthroughScene {
       bottom: 100px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(0, 255, 0, 0.9);
-      padding: 12px 24px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 10px 16px;
       border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
 
       p {
         margin: 0;
-        color: #000;
-        font-size: 16px;
+        color: #fff;
+        font-size: 14px;
         font-weight: 600;
       }
     }
@@ -309,7 +310,7 @@ export class WalkthroughViewerComponent implements OnInit, AfterViewInit, OnDest
   
   // Raycaster for interactions
   private raycaster = new THREE.Raycaster();
-  private hotspotMeshes: THREE.Mesh[] = [];
+  private hotspotMeshes: THREE.Object3D[] = [];
 
   // Clock for delta time
   private clock = new THREE.Clock();
@@ -344,6 +345,10 @@ export class WalkthroughViewerComponent implements OnInit, AfterViewInit, OnDest
     window.removeEventListener('resize', this.onWindowResize);
     document.removeEventListener('keydown', this.onKeyDown);
     document.removeEventListener('keyup', this.onKeyUp);
+    const containerEl = this.container?.nativeElement;
+    if (containerEl) {
+      containerEl.removeEventListener('click', this.onClickInteract);
+    }
   }
 
   private initThreeJS() {
@@ -389,6 +394,8 @@ export class WalkthroughViewerComponent implements OnInit, AfterViewInit, OnDest
     window.addEventListener('resize', this.onWindowResize.bind(this));
     document.addEventListener('keydown', this.onKeyDown.bind(this));
     document.addEventListener('keyup', this.onKeyUp.bind(this));
+    // Click to interact with hotspot in center of view
+    containerEl.addEventListener('click', this.onClickInteract);
 
     // Start animation
     this.animate();
@@ -561,19 +568,55 @@ export class WalkthroughViewerComponent implements OnInit, AfterViewInit, OnDest
     this.hotspotMeshes = [];
 
     entryPoints.forEach(entry => {
-      const geometry = new THREE.CylinderGeometry(0.5, 0.5, 0.1, 32);
-      const material = new THREE.MeshBasicMaterial({ 
-        color: 0x00ff00,
-        transparent: true,
-        opacity: 0.7
-      });
+      // Create a white circular quad with an upward arrow sprite to match desired design
+      const size = 0.7;
+      // Vertical plane so full surface is clickable from the camera
+      const geometry = new THREE.PlaneGeometry(size, size);
+
+      // Create a canvas-based texture for a white circle with blue arrow
+      const canvas = document.createElement('canvas');
+      canvas.width = 256; canvas.height = 256;
+      const ctx = canvas.getContext('2d')!;
+      ctx.clearRect(0, 0, 256, 256);
+      // Outer circle shadow
+      ctx.shadowColor = 'rgba(0,0,0,0.25)';
+      ctx.shadowBlur = 16;
+      // White circle
+      ctx.beginPath();
+      ctx.arc(128, 128, 110, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      // Border
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.stroke();
+      // Upward arrow
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#2196F3';
+      ctx.beginPath();
+      ctx.moveTo(128, 72); // tip
+      ctx.lineTo(178, 132);
+      ctx.lineTo(148, 132);
+      ctx.lineTo(148, 184);
+      ctx.lineTo(108, 184);
+      ctx.lineTo(108, 132);
+      ctx.lineTo(78, 132);
+      ctx.closePath();
+      ctx.fill();
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.anisotropy = 8;
+      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
 
       const hotspot = new THREE.Mesh(geometry, material);
-      hotspot.position.set(entry.position.x, 0.05, entry.position.z);
-      hotspot.userData = entry;
-
-      this.scene.add(hotspot);
-      this.hotspotMeshes.push(hotspot);
+      hotspot.position.set(0, 0, 0);
+      // Face the camera: add to a group positioned at the entry point and billboard each frame
+      const group = new THREE.Group();
+      group.position.set(entry.position.x, 1.2, entry.position.z);
+      group.add(hotspot);
+      group.userData = entry;
+      this.scene.add(group);
+      this.hotspotMeshes.push(group);
     });
   }
 
@@ -632,6 +675,11 @@ export class WalkthroughViewerComponent implements OnInit, AfterViewInit, OnDest
 
       // Check for nearby hotspots
       this.checkNearbyHotspots();
+
+      // Make hotspot icons billboard to face camera
+      this.hotspotMeshes.forEach(obj => {
+        obj.lookAt(this.camera.position.x, obj.position.y, this.camera.position.z);
+      });
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -639,10 +687,24 @@ export class WalkthroughViewerComponent implements OnInit, AfterViewInit, OnDest
 
   private checkNearbyHotspots() {
     this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
-    const intersects = this.raycaster.intersectObjects(this.hotspotMeshes);
+    // Intersect children meshes inside groups for accurate hit testing
+    const intersectTargets: THREE.Object3D[] = [];
+    this.hotspotMeshes.forEach(obj => {
+      if ((obj as THREE.Group).children?.length) {
+        intersectTargets.push(...(obj as THREE.Group).children);
+      } else {
+        intersectTargets.push(obj);
+      }
+    });
+    const intersects = this.raycaster.intersectObjects(intersectTargets, true);
 
-    if (intersects.length > 0 && intersects[0].distance < 3) {
-      this.nearbyHotspot = intersects[0].object.userData;
+    if (intersects.length > 0 && intersects[0].distance < 4) {
+      // If we hit the child mesh, read data from its parent group
+      const obj = intersects[0].object;
+      const parent = obj.parent as THREE.Object3D;
+      this.nearbyHotspot = (parent && parent.userData && Object.keys(parent.userData).length)
+        ? parent.userData
+        : obj.userData;
     } else {
       this.nearbyHotspot = null;
     }
@@ -666,13 +728,17 @@ export class WalkthroughViewerComponent implements OnInit, AfterViewInit, OnDest
       case 'KeyD':
         this.moveRight = true;
         break;
-      case 'KeyE':
-        if (this.nearbyHotspot && this.nearbyHotspot.target_scene_id) {
-          this.transitionToScene(this.nearbyHotspot.target_scene_id);
-        }
-        break;
     }
   };
+
+  // Click handler to interact with the hotspot currently centered
+  private onClickInteract = (event: MouseEvent) => {
+    // Only when controls are locked (user is in walkthrough)
+    if (!this.controlsLocked) return;
+    if (this.nearbyHotspot && this.nearbyHotspot.target_scene_id) {
+      this.transitionToScene(this.nearbyHotspot.target_scene_id);
+    }
+  }
 
   private onKeyUp = (event: KeyboardEvent) => {
     switch (event.code) {
