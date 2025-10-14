@@ -9,9 +9,9 @@ This documentation provides everything you need to understand, deploy, and use t
 ## 🚀 **Quick Start**
 
 ### New Users
-- [Getting Started Guide](getting-started.md) *(Coming Soon)*
-- [System Requirements](system-requirements.md) *(Coming Soon)*
-- [Installation Guide](installation.md) *(Coming Soon)*
+- **[Getting Started Guide](getting-started.md)** - Quick orientation for new contributors
+- **[System Requirements](system-requirements.md)** - Hardware, OS, and tooling prerequisites
+- **[Installation Guide](installation.md)** - Step-by-step local environment setup
 
 ### Developers
 - [API Documentation](api.md) *(Coming Soon)*

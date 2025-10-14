@@ -62,6 +62,7 @@ A complete cross-platform solution for creating and exploring interactive 360° 
 
 ## Documentation
 
+- [Getting Started Guide](docs/getting-started.md)
+- [System Requirements](docs/system-requirements.md)
+- [Installation Guide](docs/installation.md)
 - [Solution Design Document](docs/solution-design.md)
-- [API Documentation](docs/api.md)
-- [Deployment Guide](docs/deployment.md)
