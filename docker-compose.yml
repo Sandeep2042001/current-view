@@ -49,11 +49,11 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=interactive360
+      - DB_HOST=turntable.proxy.rlwy.net
+      - DB_PORT=21278
+      - DB_NAME=railway
       - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      - DB_PASSWORD=DdXUammdgUszdXOXAapcJHnFJTqmflyq
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
@@ -70,19 +70,24 @@ services:
     networks:
       - app-network
 
-  # CV Processing Worker
+  # CV Processing Worker with OpenCV Support
   cv-worker:
     build:
       context: ./cv-pipeline
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.fast
     environment:
+      - NODE_ENV=development
+      - DB_HOST=turntable.proxy.rlwy.net
+      - DB_PORT=21278
+      - DB_NAME=railway
+      - DB_USER=postgres
+      - DB_PASSWORD=DdXUammdgUszdXOXAapcJHnFJTqmflyq
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET=interactive360
-      - NODE_ENV=development
     depends_on:
       - redis
       - minio
@@ -90,6 +95,7 @@ services:
     volumes:
       - ./cv-pipeline:/app
       - /app/node_modules
+      - cv-temp:/app/temp
     networks:
       - app-network
     restart: unless-stopped
@@ -112,6 +118,7 @@ volumes:
   postgres_data:
   minio_data:
   redis_data:
+  cv-temp:
 
 networks:
   app-network:

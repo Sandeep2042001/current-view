@@ -74,6 +74,13 @@ import { Project } from '../../models/user.model';
               <i class="material-icons">edit</i>
               Edit
             </button>
+            <button (click)="startBuildingStitching(project); $event.stopPropagation()" 
+                    class="action-btn success"
+                    *ngIf="project.status === 'completed' && !project.metadata?.['building_panorama_path']"
+                    [disabled]="(project.room_count || 0) < 1">
+              <i class="material-icons">business</i>
+              Create Building View
+            </button>
             <button (click)="deleteProject(project); $event.stopPropagation()" 
                     class="action-btn danger">
               <i class="material-icons">delete</i>
@@ -231,6 +238,42 @@ export class ProjectsComponent implements OnInit {
       } catch (error) {
         this.toastr.error('Failed to delete project');
         console.error('Error deleting project:', error);
+      }
+    }
+  }
+
+  async startBuildingStitching(project: Project) {
+    if (!project.room_count || project.room_count < 1) {
+      this.toastr.error('At least 1 completed room is required for building stitching');
+      return;
+    }
+
+    if (confirm(`Create building-wide 360° view for "${project.name}"? This will combine all ${project.room_count} rooms into a seamless building panorama.`)) {
+      try {
+        this.toastr.info('Starting building stitching process...');
+        
+        // Call the building stitching API
+        const response = await fetch(`http://localhost:3000/api/processing/building-stitch/${project.id}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.authService.getToken()}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to start building stitching');
+        }
+
+        const result = await response.json();
+        this.toastr.success(result.message || 'Building stitching started successfully!');
+        
+        // Refresh projects to show updated status
+        this.loadProjects();
+        
+      } catch (error) {
+        this.toastr.error('Failed to start building stitching');
+        console.error('Error starting building stitching:', error);
       }
     }
   }

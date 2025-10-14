@@ -85,9 +85,15 @@ export class LoginComponent {
       const { email, password } = this.loginForm.value;
 
       this.authService.login(email, password).subscribe({
-        next: () => {
+        next: (response) => {
           this.toastr.success('Login successful!');
-          this.router.navigate(['/projects']);
+          
+          // Redirect based on user role
+          if (response.user.role === 'admin' || response.user.role === 'super_admin') {
+            this.router.navigate(['/admin']);
+          } else {
+            this.router.navigate(['/projects']);
+          }
         },
         error: (error) => {
           this.toastr.error(error.error?.error || 'Login failed');

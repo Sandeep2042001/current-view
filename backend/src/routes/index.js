@@ -20,6 +20,36 @@ router.use('/auth', authRoutes);
 // Public image serving (no authentication required)
 router.use('/upload/image-data', imageDataRoute);
 
+// Public stitched image serving (no authentication required)
+const stitchedImageRoute = express.Router();
+stitchedImageRoute.get('/:imagePath', async (req, res) => {
+  try {
+    const imagePath = decodeURIComponent(req.params.imagePath);
+    const { getMinioClient } = require('../config/minio');
+    
+    // Get image data from MinIO
+    const minioClient = getMinioClient();
+    const imageStream = await minioClient.getObject(
+      process.env.MINIO_BUCKET || 'interactive360',
+      imagePath
+    );
+
+    // Set appropriate headers
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'public, max-age=3600'
+    });
+
+    // Stream the image data
+    imageStream.pipe(res);
+  } catch (error) {
+    console.error('Error serving stitched image:', error);
+    res.status(404).json({ error: 'Stitched image not found' });
+  }
+});
+
+router.use('/upload/stitched-image', stitchedImageRoute);
+
 // Protected routes (authentication required)
 router.use('/projects', authMiddleware, projectRoutes);
 router.use('/upload', authMiddleware, uploadRoutes);

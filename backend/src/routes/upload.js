@@ -212,6 +212,32 @@ router.get('/progress/:roomId', async (req, res) => {
   }
 });
 
+// Serve stitched images directly by file path
+router.get('/stitched-image/:imagePath', async (req, res) => {
+  try {
+    const imagePath = decodeURIComponent(req.params.imagePath);
+    
+    // Get image data from MinIO
+    const minioClient = getMinioClient();
+    const imageStream = await minioClient.getObject(
+      process.env.MINIO_BUCKET || 'interactive360',
+      imagePath
+    );
+
+    // Set appropriate headers
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'public, max-age=3600'
+    });
+
+    // Stream the image data
+    imageStream.pipe(res);
+  } catch (error) {
+    logger.error('Error serving stitched image:', error);
+    res.status(404).json({ error: 'Stitched image not found' });
+  }
+});
+
 // Export the image data route separately for public access
 const imageDataRoute = express.Router();
 imageDataRoute.get('/:imageId', async (req, res) => {

@@ -47,6 +47,14 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
             <option *ngFor="let room of rooms" [value]="room.id">{{ room.name }}</option>
           </select>
         </div>
+        
+        <div class="building-navigation" *ngIf="project?.metadata?.['building_panorama_path']">
+          <button (click)="toggleBuildingView()" class="building-btn" 
+                  [class.active]="isBuildingView" title="Toggle Building View">
+            <i class="material-icons">{{ isBuildingView ? 'room' : 'business' }}</i>
+            {{ isBuildingView ? 'Room View' : 'Building View' }}
+          </button>
+        </div>
       </div>
 
       <!-- Hidden File Input -->
@@ -72,6 +80,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
              class="hotspot" 
               [style.left.px]="hotspot.screenPosition?.x || 0"
               [style.top.px]="hotspot.screenPosition?.y || 0"
+              [style.display]="hotspot.screenPosition?.visible !== false ? 'block' : 'none'"
              [class]="'hotspot-' + hotspot.type"
              (click)="onHotspotClick(hotspot)">
           <div class="hotspot-icon">
@@ -88,7 +97,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
           <div *ngFor="let annotation of annotations" 
                class="annotation"
                 [style.left.px]="annotation.screenPosition?.x || 0"
-                [style.top.px]="annotation.screenPosition?.y || 0">
+                [style.top.px]="annotation.screenPosition?.y || 0"
+                [style.display]="annotation.screenPosition?.visible !== false ? 'block' : 'none'">
             <div class="annotation-marker" [class]="'annotation-' + annotation.type">
               <i class="material-icons">{{ getAnnotationIcon(annotation.type) }}</i>
             </div>
@@ -104,7 +114,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
           <div *ngFor="let measurement of measurements" 
                class="measurement"
                 [style.left.px]="measurement.screenPosition?.x || 0"
-                [style.top.px]="measurement.screenPosition?.y || 0">
+                [style.top.px]="measurement.screenPosition?.y || 0"
+                [style.display]="measurement.screenPosition?.visible !== false ? 'block' : 'none'">
             <div class="measurement-line"></div>
             <div class="measurement-label">
               {{ formatDistance(measurement.distance) }} {{ measurement.unit }}
@@ -138,7 +149,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
                 <span>Room connections mapping</span>
               </div>
             </div>
-          </div>
+        </div>
         </div>
       </div>
 
@@ -179,7 +190,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
               <div class="status-details">
                 <span class="status-label">{{ getStatusLabel(currentRoom?.status || 'pending') }}</span>
                 <span class="status-description">{{ getStatusDescription(currentRoom?.status || 'pending') }}</span>
-              </div>
+            </div>
             </div>
           </div>
 
@@ -190,17 +201,11 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
             </button>
           </div>
 
-          <div class="info-help">
-            <h4>Need Help?</h4>
-            <div class="help-item">
-              <strong>Annotations:</strong> Click "Add Annotation" to manually mark points of interest
-            </div>
-            <div class="help-item">
-              <strong>Hotspots:</strong> Auto-generated after processing to connect rooms
-            </div>
-            <div class="help-item">
-              <strong>Processing:</strong> Converts your images into a navigable 360° experience
-            </div>
+          <div class="info-actions" *ngIf="currentRoom?.status === 'completed'">
+            <button (click)="generateHotspots()" class="action-btn secondary">
+              <i class="material-icons">place</i>
+              Generate Hotspots
+            </button>
           </div>
         </div>
       </div>
@@ -240,6 +245,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   private controls!: OrbitControls;
   private sphere!: THREE.Mesh;
   private animationId!: number;
+  private lastPositionUpdate = 0;
 
   // Component state
   projectId!: string;
@@ -250,6 +256,10 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   hotspots: Hotspot[] = [];
   annotations: Annotation[] = [];
   measurements: Measurement[] = [];
+  
+  // Building-level navigation
+  isBuildingView = false;
+  buildingHotspots: Hotspot[] = [];
 
   // UI state
   loading = false;
@@ -341,15 +351,15 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
 
       // Load hotspots
       this.hotspots = this.currentRoom.hotspots || [];
-      this.calculateHotspotScreenPositions();
+      this.updateHotspotPositions();
 
       // Load annotations
       this.annotations = await this.loadAnnotations();
-      this.calculateAnnotationScreenPositions();
+      this.updateAnnotationPositions();
 
       // Load measurements
       this.measurements = await this.loadMeasurements();
-      this.calculateMeasurementScreenPositions();
+      this.updateMeasurementPositions();
 
       // Load 360° image
       await this.load360Image();
@@ -381,11 +391,12 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loadingMessage = 'Loading 360° image...';
 
       if (this.currentRoom.metadata?.['stitched_image_path']) {
-        // Get presigned URL for the stitched image
-        const imageUrl = await this.uploadService.getImageUrl(this.currentRoom.metadata['stitched_image_path']).toPromise();
+        // Use direct MinIO path for stitched image
+        const stitchedImagePath = this.currentRoom.metadata['stitched_image_path'];
+        const directUrl = `http://localhost:3000/api/upload/stitched-image/${encodeURIComponent(stitchedImagePath)}`;
         
         // Load texture
-        const texture = await this.loadTexture(imageUrl?.url || '');
+        const texture = await this.loadTexture(directUrl);
         
         // Create sphere geometry for 360° viewing
         const geometry = new THREE.SphereGeometry(100, 60, 40);
@@ -522,10 +533,19 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       
       try {
         if (this.controls) {
-          this.controls.update();
+      this.controls.update();
         }
         if (this.renderer && this.scene && this.camera) {
-          this.renderer.render(this.scene, this.camera);
+      this.renderer.render(this.scene, this.camera);
+          
+          // Update hotspot positions to move with camera (throttled for performance)
+          const now = Date.now();
+          if (now - this.lastPositionUpdate > 16) { // Update at ~60fps max
+            this.updateHotspotPositions();
+            this.updateAnnotationPositions();
+            this.updateMeasurementPositions();
+            this.lastPositionUpdate = now;
+          }
         }
       } catch (error) {
         console.error('Render loop error:', error);
@@ -558,14 +578,18 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     this.renderer.setSize(width, height);
   }
 
-  private calculateHotspotScreenPositions() {
+  private updateHotspotPositions() {
+    if (!this.camera || !this.viewerContainer) return;
+    
     this.hotspots.forEach(hotspot => {
       const screenPos = this.worldToScreen(hotspot.position);
       hotspot.screenPosition = screenPos;
     });
   }
 
-  private calculateAnnotationScreenPositions() {
+  private updateAnnotationPositions() {
+    if (!this.camera || !this.viewerContainer) return;
+    
     this.annotations.forEach(annotation => {
       if (annotation.coordinates.length > 0) {
         const screenPos = this.worldToScreen(annotation.coordinates[0]);
@@ -574,7 +598,9 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  private calculateMeasurementScreenPositions() {
+  private updateMeasurementPositions() {
+    if (!this.camera || !this.viewerContainer) return;
+    
     this.measurements.forEach(measurement => {
       if (measurement.points.length > 0) {
         const screenPos = this.worldToScreen(measurement.points[0]);
@@ -584,13 +610,32 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private worldToScreen(worldPosition: { x: number; y: number; z: number }) {
-    const vector = new THREE.Vector3(worldPosition.x, worldPosition.y, worldPosition.z);
+    // Scale normalized coordinates (-1 to 1) to sphere radius (100)
+    // The sphere geometry has radius 100, so we need to scale the hotspot coordinates
+    const sphereRadius = 100;
+    const vector = new THREE.Vector3(
+      worldPosition.x * sphereRadius,
+      worldPosition.y * sphereRadius,
+      worldPosition.z * sphereRadius
+    );
+    
+    // Normalize to place on sphere surface
+    vector.normalize().multiplyScalar(sphereRadius);
+    
+    // Project to screen coordinates
     vector.project(this.camera);
+
+    // Check if the point is behind the camera (z > 1 means behind)
+    const isVisible = vector.z < 1;
 
     const x = (vector.x * 0.5 + 0.5) * this.viewerContainer.nativeElement.clientWidth;
     const y = (vector.y * -0.5 + 0.5) * this.viewerContainer.nativeElement.clientHeight;
 
-    return { x, y };
+    return { 
+      x: isVisible ? x : -1000, // Hide hotspots behind camera
+      y: isVisible ? y : -1000,
+      visible: isVisible
+    };
   }
 
   private async loadAnnotations(): Promise<Annotation[]> {
@@ -626,7 +671,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       });
     } catch (error) {
       console.error('Error loading measurements:', error);
-      return [];
+    return [];
     }
   }
 
@@ -650,6 +695,133 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   switchToRoom(roomId: string) {
     this.currentRoomId = roomId;
     this.switchRoom();
+  }
+
+  // Building-level navigation methods
+  async toggleBuildingView() {
+    if (this.isBuildingView) {
+      // Switch back to room view
+      this.isBuildingView = false;
+      await this.loadRoomData();
+      this.toastr.info('Switched to room view');
+    } else {
+      // Switch to building view
+      this.isBuildingView = true;
+      await this.loadBuildingData();
+      this.toastr.info('Switched to building view');
+    }
+  }
+
+  private async loadBuildingData() {
+    try {
+      this.loadingMessage = 'Loading building view...';
+      
+      // Load building panorama
+      await this.loadBuildingPanorama();
+      
+      // Load building-level hotspots
+      this.buildingHotspots = await this.loadBuildingHotspots();
+      this.hotspots = this.buildingHotspots; // Use building hotspots for display
+      this.updateHotspotPositions();
+      
+    } catch (error) {
+      this.toastr.error('Failed to load building view');
+      console.error('Error loading building data:', error);
+    }
+  }
+
+  private async loadBuildingPanorama() {
+    try {
+      if (!this.project?.metadata?.['building_panorama_path']) {
+        throw new Error('No building panorama available');
+      }
+
+      const buildingImagePath = this.project.metadata['building_panorama_path'];
+      const directUrl = `http://localhost:3000/api/upload/stitched-image/${encodeURIComponent(buildingImagePath)}`;
+      
+      // Load texture
+      const texture = await this.loadTexture(directUrl);
+      
+      // Create sphere geometry for 360° viewing
+      const geometry = new THREE.SphereGeometry(100, 60, 40);
+      geometry.scale(-1, 1, 1); // Invert the sphere (inside-out)
+
+      // Create material with texture
+      const material = new THREE.MeshBasicMaterial({ 
+        map: texture,
+        side: THREE.DoubleSide // Render both sides
+      });
+      
+      // Remove existing sphere and add building panorama
+      if (this.sphere) {
+        this.scene.remove(this.sphere);
+      }
+      
+      this.sphere = new THREE.Mesh(geometry, material);
+      this.scene.add(this.sphere);
+
+      this.startRenderLoop();
+      this.toastr.success('Building panorama loaded successfully!');
+      
+    } catch (error) {
+      this.toastr.error('Failed to load building panorama');
+      console.error('Error loading building panorama:', error);
+    }
+  }
+
+  private async loadBuildingHotspots(): Promise<Hotspot[]> {
+    try {
+      // Create building hotspots from room data
+      const buildingHotspots: Hotspot[] = [];
+      
+      // Create navigation hotspots between rooms
+      this.rooms.forEach((room, index) => {
+        this.rooms.forEach((targetRoom, targetIndex) => {
+          if (index === targetIndex) return;
+          
+          const position = this.calculateBuildingHotspotPosition(index, targetIndex, this.rooms.length);
+          
+          buildingHotspots.push({
+            id: `building-nav-${room.id}-${targetRoom.id}`,
+            room_id: room.id,
+            target_room_id: targetRoom.id,
+            type: 'navigation',
+            position: position,
+            title: `Go to ${targetRoom.name}`,
+            description: `Navigate to ${targetRoom.name}`,
+            is_auto_generated: true,
+            data: {
+              transition_type: 'smooth',
+              animation_duration: 1500,
+              building_level: true,
+              source_room: room.name,
+              target_room: targetRoom.name
+            },
+            created_at: new Date().toISOString()
+          });
+        });
+      });
+
+      return buildingHotspots;
+    } catch (error) {
+      console.error('Error loading building hotspots:', error);
+      return [];
+    }
+  }
+
+  private calculateBuildingHotspotPosition(sourceIndex: number, targetIndex: number, totalRooms: number): { x: number; y: number; z: number } {
+    // Calculate angle based on room positions
+    const sourceAngle = (sourceIndex / totalRooms) * 2 * Math.PI;
+    const targetAngle = (targetIndex / totalRooms) * 2 * Math.PI;
+    
+    // Position hotspot between source and target
+    const angle = (sourceAngle + targetAngle) / 2;
+    
+    return {
+      x: Math.cos(angle) * 0.7,
+      y: 0.1,
+      z: Math.sin(angle) * 0.7
+    };
   }
 
   // Control Methods
@@ -839,7 +1011,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         if (annotation) {
           this.annotations.push(annotation);
         }
-        this.calculateAnnotationScreenPositions();
+        this.updateAnnotationPositions();
         this.toastr.success('Annotation added successfully');
         
         this.disableAnnotationMode();
@@ -897,7 +1069,7 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
       if (measurement) {
         this.measurements.push(measurement);
       }
-      this.calculateMeasurementScreenPositions();
+      this.updateMeasurementPositions();
       this.toastr.success('Measurement created successfully');
       
       this.disableMeasurementMode();
@@ -1048,8 +1220,19 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private pollProcessingStatus(jobId: string) {
+    // Don't start polling if room is already completed
+    if (this.currentRoom.status === 'completed') {
+      return;
+    }
+
     const pollInterval = setInterval(async () => {
       try {
+        // Stop polling if room is already completed
+        if (this.currentRoom.status === 'completed') {
+          clearInterval(pollInterval);
+          return;
+        }
+
         const status = await this.processingService.getJobStatus(jobId).toPromise();
         
         if (status.status === 'completed') {
@@ -1067,11 +1250,43 @@ export class ViewerComponent implements OnInit, AfterViewInit, OnDestroy {
         console.error('Error polling job status:', error);
         clearInterval(pollInterval);
       }
-    }, 5000); // Poll every 5 seconds
+    }, 10000); // Poll every 10 seconds (reduced frequency)
     
     // Stop polling after 10 minutes
     setTimeout(() => {
       clearInterval(pollInterval);
     }, 600000);
+  }
+
+  async generateHotspots() {
+    if (!this.currentRoom) return;
+    
+    try {
+      this.loading = true;
+      this.loadingMessage = 'Generating hotspots...';
+      
+      const result = await this.processingService.startHotspotGeneration(this.currentRoom.id).toPromise();
+      
+      if (result) {
+        this.toastr.success('Hotspot generation started!');
+        
+        // Poll for completion
+        setTimeout(async () => {
+          try {
+            await this.refreshCurrentRoom();
+            await this.loadRoomData();
+            this.toastr.success('Hotspots generated successfully!');
+          } catch (error) {
+            console.error('Error refreshing after hotspot generation:', error);
+          }
+        }, 5000);
+      }
+    } catch (error: any) {
+      const errorMessage = error?.error?.error || 'Failed to generate hotspots';
+      this.toastr.error(errorMessage);
+      console.error('Hotspot generation error:', error);
+    } finally {
+      this.loading = false;
+    }
   }
 }

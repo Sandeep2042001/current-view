@@ -33,6 +33,18 @@ export class AppComponent implements OnInit {
     });
   }
 
+  isAdmin(): boolean {
+    return this.user?.role === 'admin' || this.user?.role === 'super_admin';
+  }
+
+  goToAdmin() {
+    this.router.navigate(['/admin']);
+  }
+
+  goToProjects() {
+    this.router.navigate(['/projects']);
+  }
+
   logout() {
     this.authService.logout();
     this.router.navigate(['/login']);

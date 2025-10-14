@@ -2,9 +2,10 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install system dependencies for basic image processing
+# Install system dependencies for OpenCV and image processing
 RUN apk add --no-cache \
     python3 \
+    py3-pip \
     make \
     g++ \
     cmake \
@@ -13,12 +14,48 @@ RUN apk add --no-cache \
     libjpeg-turbo-dev \
     libpng-dev \
     libwebp-dev \
+    libtiff-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    libxvidcore-dev \
+    libx264-dev \
+    libgtk-3-dev \
+    libatlas-base-dev \
+    gfortran \
     wget \
     unzip \
-    bash
+    bash \
+    git
 
-# For now, we'll use a simpler approach without full OpenCV compilation
-# This can be enhanced later with proper OpenCV installation
+# Install OpenCV dependencies
+RUN pip3 install numpy
+
+# Install OpenCV from source (this takes longer but ensures compatibility)
+RUN cd /tmp && \
+    wget -O opencv.zip https://github.com/opencv/opencv/archive/4.8.0.zip && \
+    unzip opencv.zip && \
+    cd opencv-4.8.0 && \
+    mkdir build && \
+    cd build && \
+    cmake -D CMAKE_BUILD_TYPE=RELEASE \
+          -D CMAKE_INSTALL_PREFIX=/usr/local \
+          -D INSTALL_PYTHON_EXAMPLES=OFF \
+          -D INSTALL_C_EXAMPLES=OFF \
+          -D OPENCV_ENABLE_NONFREE=ON \
+          -D BUILD_EXAMPLES=OFF \
+          -D BUILD_opencv_python2=OFF \
+          -D BUILD_opencv_python3=ON \
+          -D PYTHON3_EXECUTABLE=$(which python3) \
+          -D PYTHON3_INCLUDE_DIR=$(python3 -c "from distutils.sysconfig import get_python_inc; print(get_python_inc())") \
+          -D PYTHON3_PACKAGES_PATH=$(python3 -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())") \
+          .. && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    cd / && \
+    rm -rf /tmp/opencv*
 
 # Copy package files
 COPY package*.json ./

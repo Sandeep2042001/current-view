@@ -385,9 +385,11 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
 
   private async loadProcessingJobs() {
     try {
-      this.processingJobs = await this.http.get<ProcessingJob[]>(`${this.API_URL}/admin/jobs`).toPromise() || [];
+      const response = await this.http.get<any>(`${this.API_URL}/admin/jobs`).toPromise();
+      this.processingJobs = response?.jobs || [];
     } catch (error) {
       console.error('Error loading processing jobs:', error);
+      this.processingJobs = []; // Ensure it's always an array
     }
   }
 
@@ -400,6 +402,10 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
   }
 
   get filteredJobs(): ProcessingJob[] {
+    if (!Array.isArray(this.processingJobs)) {
+      return [];
+    }
+    
     if (this.selectedJobTab === 'all') {
       return this.processingJobs;
     }

@@ -3,13 +3,26 @@ const { db } = require('./config/database');
 const { getMinioClient } = require('./config/minio');
 const logger = require('./utils/logger');
 const { processStitchingJob } = require('./processors/stitching');
+
+// Try to load OpenCV processor, but don't fail if it's not available
+let PythonOpenCVStitchingProcessor = null;
+try {
+  const opencvModule = require('./processors/python_opencv_stitching');
+  PythonOpenCVStitchingProcessor = opencvModule.PythonOpenCVStitchingProcessor;
+  console.log('✅ OpenCV stitching processor loaded successfully');
+} catch (error) {
+  console.log('⚠️ OpenCV stitching processor not available:', error.message);
+  console.log('📝 Will use basic stitching as fallback');
+}
 const { process3DReconstructionJob } = require('./processors/reconstruction');
 const { processHotspotGenerationJob } = require('./processors/hotspots');
+const { processBuildingStitchingJob } = require('./processors/building_stitching');
 
 class CVWorker {
   constructor() {
     this.redisClient = null;
     this.isProcessing = false;
+    this.opencvProcessor = PythonOpenCVStitchingProcessor ? new PythonOpenCVStitchingProcessor() : null;
   }
 
   async connect() {
@@ -62,6 +75,8 @@ class CVWorker {
     
     try {
       logger.info(`Processing job: ${job.jobId} (${job.type})`);
+      console.log(`🚀 STARTING JOB: ${job.jobId} (${job.type})`);
+      console.log(`📋 Job data:`, JSON.stringify(job.data, null, 2));
 
       // Update job status to processing
       await db('processing_jobs')
@@ -70,19 +85,39 @@ class CVWorker {
           status: 'processing',
           started_at: new Date()
         });
+      
+      console.log(`📊 Job ${job.jobId} status updated to 'processing'`);
 
       let result;
 
       // Process based on job type
       switch (job.type) {
         case 'stitching':
-          result = await processStitchingJob(job);
+          // Try OpenCV stitching first if available, fallback to basic stitching
+          if (this.opencvProcessor) {
+            try {
+              console.log('🎯 Attempting OpenCV stitching...');
+              result = await this.opencvProcessor.processStitchingJob(job);
+              console.log('✅ OpenCV stitching completed successfully');
+            } catch (opencvError) {
+              console.log('⚠️ OpenCV stitching failed, falling back to basic stitching:', opencvError.message);
+              result = await processStitchingJob(job);
+              console.log('✅ Basic stitching completed as fallback');
+            }
+          } else {
+            console.log('📝 Using basic stitching (OpenCV not available)');
+            result = await processStitchingJob(job);
+            console.log('✅ Basic stitching completed');
+          }
           break;
         case '3d_reconstruction':
           result = await process3DReconstructionJob(job);
           break;
         case 'hotspot_generation':
           result = await processHotspotGenerationJob(job);
+          break;
+        case 'building_stitching':
+          result = await processBuildingStitchingJob(job);
           break;
         default:
           throw new Error(`Unknown job type: ${job.type}`);
@@ -98,9 +133,11 @@ class CVWorker {
         });
 
       logger.info(`Job completed: ${job.jobId}`);
+      console.log(`🎉 JOB COMPLETED: ${job.jobId} - Result:`, JSON.stringify(result, null, 2));
 
     } catch (error) {
       logger.error(`Job failed: ${job.jobId}`, error);
+      console.error(`❌ JOB FAILED: ${job.jobId} - Error: ${error.message}`);
 
       // Update job as failed
       await db('processing_jobs')

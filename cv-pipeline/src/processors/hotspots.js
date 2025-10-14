@@ -10,6 +10,7 @@ async function processHotspotGenerationJob(job) {
 
     // Get room and its project
     const room = await db('rooms')
+      .select('rooms.*', 'projects.name as project_name')
       .join('projects', 'rooms.project_id', 'projects.id')
       .where({ 'rooms.id': room_id })
       .first();

@@ -1,9 +1,14 @@
 import { Routes } from '@angular/router';
 import { AuthGuard } from './guards/auth.guard';
 import { AdminGuard } from './guards/admin.guard';
+import { RoleRedirectGuard } from './guards/role-redirect.guard';
 
 export const AppRoutes: Routes = [
-  { path: '', redirectTo: '/projects', pathMatch: 'full' },
+  { 
+    path: '', 
+    canActivate: [RoleRedirectGuard],
+    children: []
+  },
   { path: 'login', loadComponent: () => import('./components/login/login.component').then(m => m.LoginComponent) },
   { path: 'register', loadComponent: () => import('./components/register/register.component').then(m => m.RegisterComponent) },
   { 
