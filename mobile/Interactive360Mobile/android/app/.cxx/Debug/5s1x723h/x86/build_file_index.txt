@@ -1,0 +1,1 @@
+F:\MyClients\freelancer\Interactive-360Viewer\360-platform\mobile\Interactive360Mobile\node_modules\react-native\ReactAndroid\cmake-utils\default-app-setup\CMakeLists.txt
